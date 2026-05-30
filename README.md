@@ -27,7 +27,7 @@ Ordem de execução e estado actual (actualizado conforme o desenvolvimento):
 |---|------|--------|-------|
 | **0** | Monorepo + contratos API | ✅ Concluído | `apps/api`, `apps/web`, `packages/api-contracts` — ver [docs/MONOREPO.md](docs/MONOREPO.md) |
 | **1** | Supabase (Postgres + Auth + RLS + Storage + JSONB) | ✅ Concluído | Schema, seeds, auth API — guia [docs/FASE1_SUPABASE.md](docs/FASE1_SUPABASE.md) |
-| **2** | pgvector (RAG) | ⬜ Pendente | Substituir ChromaDB em `data/vector_db/` |
+| **2** | pgvector (RAG) | ✅ Concluído | Migration + `scripts/build_rag_pgvector.py` — guia [docs/FASE2_PGVECTOR.md](docs/FASE2_PGVECTOR.md) |
 | **3** | FastAPI worker (reutilizar `src/`) | ⬜ Pendente | API Python como fonte da verdade; JWT Supabase |
 | **4** | LLM Guard no worker | ⬜ Pendente | Camada ML + rule-based existente (`guardrails.py`) |
 | **5** | Next.js na Vercel | ⬜ Pendente | UI profissional; chat via SSE para a API |
@@ -286,6 +286,20 @@ python run_dev.py
 ```
 
 Login demo na API: `gestao.demo` / `demo123` (mapeado para email `@rotinaviva.local`).
+
+---
+
+## pgvector / RAG (Fase 2)
+
+Guia: [docs/FASE2_PGVECTOR.md](docs/FASE2_PGVECTOR.md)
+
+```powershell
+# 1. SQL Editor: supabase/migrations/20260530200000_pgvector_rag.sql
+# 2. Colocar PDFs em data/
+# 3. .env → ROTINA_RAG_BACKEND=pgvector
+python scripts/build_rag_pgvector.py
+python scripts/query_rag_pgvector.py "Qual o cardápio da semana?"
+```
 
 ---
 
