@@ -1,9 +1,16 @@
-# Produção — imagem slim (requirements-prod.txt), sem volumes de código
+# Produção — stack Fase 6: FastAPI worker (+ Whisper opcional para STT local)
+# Next.js: deploy separado na Vercel (apps/web)
+#
+# Uso:
+#   docker compose -f docker-compose.prod.yml up --build -d
+#   curl http://127.0.0.1:8000/health
+
 services:
   whisper:
     image: hwdsl2/whisper-server:latest
     container_name: rotina-whisper
     restart: unless-stopped
+    profiles: ["whisper"]
     environment:
       WHISPER_MODEL: base
       WHISPER_LANGUAGE: pt
@@ -18,29 +25,42 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
 
-  rotina-viva:
+  api-worker:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: rotina-viva
+      dockerfile: apps/api/Dockerfile
+    container_name: rotina-api
+    restart: unless-stopped
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     environment:
-      CREWAI_DISABLE_TELEMETRY: "true"
+      PORT: "8000"
       ROTINA_DATA_DIR: /data
-      CHROMA_PERSIST_DIR: /data/vector_db
-      OPENAI_TRANSCRIBE_BASE_URL: http://whisper:9000/v1
-      OPENAI_TRANSCRIBE_MODEL: whisper-1
+      ROTINA_RAG_BACKEND: pgvector
+      ROTINA_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+      CREWAI_DISABLE_TELEMETRY: "true"
       ROTINA_ENABLE_CREWAI: "false"
       ROTINA_ENABLE_ML_LAB: "false"
       ROTINA_LANGFUSE_ENABLED: "false"
+      # STT local (activar profile whisper): OPENAI_TRANSCRIBE_BASE_URL=http://whisper:9000/v1
     volumes:
       - ./data:/data
-    restart: unless-stopped
-    depends_on:
-      - whisper
+      - hf-cache:/root/.cache/huggingface
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=10)",
+        ]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 180s
 
 volumes:
   whisper-models:
+  hf-cache:

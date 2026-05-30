@@ -47,3 +47,18 @@ Recomendado: **Python 3.12** (ver `packages.toml` na raiz). Python 3.10 funciona
 | `/reports/*`, `/transcribe`, `/direct-chat/*` | 501 — fases seguintes |
 
 A lógica de negócio está em `../../src/` (`rotina_inference`, `api_chat_runner`).
+
+## Produção (Fase 6)
+
+```powershell
+# Docker (raiz do repo)
+docker compose -f docker-compose.prod.yml up --build -d
+
+# Ou directamente
+docker build -f apps/api/Dockerfile -t rotina-api .
+docker run --env-file .env -p 8000:8000 rotina-api
+```
+
+- Entrypoint: `run_prod.py` (uvicorn, 1 worker)
+- Railway: [`railway.toml`](railway.toml)
+- Guia: [docs/FASE6_CUTOVER.md](../../docs/FASE6_CUTOVER.md)

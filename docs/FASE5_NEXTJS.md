@@ -126,4 +126,4 @@ FastAPI worker (:8000)
 
 ## Próximo passo
 
-**Fase 6** — cutover: desligar Streamlit do deploy principal; worker + Next.js como stack de produção.
+Roadmap concluído (Fases 0–6). Deploy: [DEPLOY_PROD.md](../../docs/DEPLOY_PROD.md).

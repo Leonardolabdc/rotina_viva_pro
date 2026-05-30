@@ -62,6 +62,8 @@ node_modules/
 .pnpm-store/
 .turbo/
 apps/web/.next/
+apps/api/data/
+apps/api/.venv/
 packages/api-contracts/generated/
 
 # Sistema Operacional

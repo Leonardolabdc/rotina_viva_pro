@@ -12,7 +12,7 @@ rotina_viva_pro/
 ├── packages/
 │   └── api-contracts/       # OpenAPI 3.1 — fonte da verdade HTTP
 ├── src/                     # Lógica Python herdada do PoC (CrewAI, RAG, guardrails)
-├── app.py                   # Streamlit legado (até Fase 6)
+├── app.py                   # Streamlit legado (dev — ver docker-compose.legacy.yml)
 ├── data/                    # CSVs / Chroma local (até Fase 1–2)
 └── docs/
 ```
@@ -21,7 +21,7 @@ rotina_viva_pro/
 
 1. **`packages/api-contracts/openapi.yaml`** define rotas, schemas e RBAC antes da implementação.
 2. **`src/`** permanece a biblioteca de domínio; `apps/api` expõe HTTP sem duplicar regras.
-3. **Streamlit** continua funcional em Docker até cutover (Fase 6).
+3. **Streamlit** permanece em Docker legado (`docker-compose.legacy.yml`) — não é o deploy de produção (Fase 6).
 
 ## Comandos (raiz)
 
@@ -49,7 +49,7 @@ docker compose up --build -d    # :8501
 | 3 | FastAPI completo | `apps/api/rotina_api/` → chama `src/` |
 | 4 | LLM Guard | middleware no worker |
 | 5 | Next.js | `apps/web/` — ver [FASE5_NEXTJS.md](FASE5_NEXTJS.md) |
-| 6 | Cutover | desligar `app.py` do deploy |
+| 6 | Cutover | `docker-compose.prod.yml`, [FASE6_CUTOVER.md](FASE6_CUTOVER.md) |
 
 ## Referências
 

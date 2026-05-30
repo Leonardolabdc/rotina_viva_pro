@@ -1,4 +1,7 @@
-# Deploy no Streamlit Community Cloud (Fase 0 — com agentes CrewAI)
+# Deploy no Streamlit Community Cloud (legado)
+
+> **Este guia é para o repositório académico [Rotina-Viva](https://github.com/Leonardolabdc/Rotina-Viva).**  
+> Para **rotina_viva_pro** (produção), use [DEPLOY_PROD.md](DEPLOY_PROD.md) e [FASE6_CUTOVER.md](FASE6_CUTOVER.md) — stack **Next.js + FastAPI worker**.
 
 Guia para publicar o **Rotina Viva** em [share.streamlit.io](https://share.streamlit.io) com chat, RAG e **multi-agente (CrewAI)** activo.
 

@@ -31,7 +31,7 @@ Ordem de execução e estado actual (actualizado conforme o desenvolvimento):
 | **3** | FastAPI worker (reutilizar `src/`) | ✅ Concluído | Chat sync/SSE, sessões Supabase — guia [docs/FASE3_FASTAPI.md](docs/FASE3_FASTAPI.md) |
 | **4** | LLM Guard no worker | ✅ Concluído | ML + rule-based — guia [docs/FASE4_LLM_GUARD.md](docs/FASE4_LLM_GUARD.md) |
 | **5** | Next.js na Vercel | ✅ Concluído | Login + chat SSE — guia [docs/FASE5_NEXTJS.md](docs/FASE5_NEXTJS.md) |
-| **6** | Cutover + desligar Streamlit | ⬜ Pendente | Streamlit só local/dev ou removido do deploy |
+| **6** | Cutover + desligar Streamlit | ✅ Concluído | Worker Docker + Vercel — guia [docs/FASE6_CUTOVER.md](docs/FASE6_CUTOVER.md) |
 
 **Legenda:** ✅ Concluído · 🔄 Em progresso · ⬜ Pendente
 
@@ -333,20 +333,58 @@ Respostas de chat incluem auditoria `guardrail` (`engine`, `riskScore`, `audit`)
 
 ---
 
-## Desenvolvimento local (código PoC — temporário)
+## Next.js (Fase 5)
 
-Enquanto a Fase 5 (Next.js) não estiver pronta, o código Streamlit herdado ainda corre em Docker para testar a lógica em `src/`:
+Guia: [docs/FASE5_NEXTJS.md](docs/FASE5_NEXTJS.md)
+
+```powershell
+# Terminal 1 — API
+.\scripts\start_api_dev.ps1
+
+# Terminal 2 — Web
+.\scripts\start_web_dev.ps1
+```
+
+Abrir http://localhost:3000 — login `gestao.demo` / `demo123`.
+
+---
+
+## Produção (Fase 6 — cutover)
+
+Guia: [docs/FASE6_CUTOVER.md](docs/FASE6_CUTOVER.md) · [docs/DEPLOY_PROD.md](docs/DEPLOY_PROD.md)
+
+| Camada | Deploy |
+|--------|--------|
+| Frontend | Vercel (`apps/web`) |
+| API | Docker / Railway / Fly (`apps/api/Dockerfile`) |
+| Dados | Supabase |
+
+```powershell
+# Worker local em Docker
+.\scripts\start_prod_docker.ps1
+# http://127.0.0.1:8000/health
+```
+
+Streamlit legado (só dev):
+
+```powershell
+docker compose -f docker-compose.legacy.yml up -d
+# http://localhost:8501
+```
+
+---
+
+## Desenvolvimento local (Streamlit legado)
+
+O PoC Streamlit ainda corre em Docker para comparar com a stack nova:
 
 ```bash
-git clone https://github.com/Leonardolabdc/rotina_viva_pro.git
-cd rotina_viva_pro
-copy .env.example .env
 docker compose up --build -d
 ```
 
-App em [http://localhost:8501](http://localhost:8501). Documentação Docker completa: ver commits iniciais ou [Rotina-Viva](https://github.com/Leonardolabdc/Rotina-Viva).
+App em [http://localhost:8501](http://localhost:8501). Para produção use **Next.js + worker** (acima).
 
-> **Nota:** O deploy público deste repo **não** usará Streamlit Cloud. A URL de produção será Vercel + API.
+> **Nota:** O deploy público deste repo usa **Vercel + API worker**, não Streamlit Cloud.
 
 ---
 
