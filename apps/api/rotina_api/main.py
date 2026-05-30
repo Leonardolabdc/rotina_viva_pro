@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from rotina_api.config import API_PHASE, API_VERSION, OPENAPI_PATH
-from rotina_api.routers import api
+from rotina_api.routers import api, auth, students
+from rotina_api.supabase_settings import supabase_configured
 
 app = FastAPI(
     title="Rotina Viva API",
@@ -34,10 +35,14 @@ app.add_middleware(
 
 @app.get("/health", tags=["health"], operation_id="getHealth")
 async def health() -> dict[str, str]:
+    phase = API_PHASE
+    if supabase_configured() and phase.startswith("0"):
+        phase = "1-supabase"
     return {
         "status": "ok",
         "version": API_VERSION,
-        "phase": API_PHASE,
+        "phase": phase,
+        "supabase": "configured" if supabase_configured() else "missing",
     }
 
 
@@ -59,4 +64,6 @@ async def serve_contract_json() -> JSONResponse:
     return JSONResponse(data)
 
 
+app.include_router(auth.router)
+app.include_router(students.router)
 app.include_router(api.router)

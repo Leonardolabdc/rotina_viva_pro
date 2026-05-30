@@ -14,6 +14,14 @@ pip install -r requirements.txt
 python run_dev.py
 ```
 
+**Fase 1** (Supabase Auth + listagem alunos):
+
+```powershell
+pip install -r requirements.txt -r requirements-supabase.txt
+```
+
+Requer `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_JWT_SECRET` no `.env` da raiz.
+
 **Fase 3+** (worker com lógica `src/` + ML/RAG):
 
 ```powershell

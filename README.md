@@ -26,7 +26,7 @@ Ordem de execução e estado actual (actualizado conforme o desenvolvimento):
 | # | Fase | Estado | Notas |
 |---|------|--------|-------|
 | **0** | Monorepo + contratos API | ✅ Concluído | `apps/api`, `apps/web`, `packages/api-contracts` — ver [docs/MONOREPO.md](docs/MONOREPO.md) |
-| **1** | Supabase (Postgres + Auth + RLS + Storage + JSONB) | ⬜ Pendente | Substituir DuckDB/CSV e sessões em ficheiro |
+| **1** | Supabase (Postgres + Auth + RLS + Storage + JSONB) | 🔄 Em progresso | Schema em `supabase/migrations/` — guia [docs/FASE1_SUPABASE.md](docs/FASE1_SUPABASE.md) |
 | **2** | pgvector (RAG) | ⬜ Pendente | Substituir ChromaDB em `data/vector_db/` |
 | **3** | FastAPI worker (reutilizar `src/`) | ⬜ Pendente | API Python como fonte da verdade; JWT Supabase |
 | **4** | LLM Guard no worker | ⬜ Pendente | Camada ML + rule-based existente (`guardrails.py`) |
@@ -266,6 +266,26 @@ python run_dev.py          # http://localhost:8000/health
 ```
 
 Contrato OpenAPI: `packages/api-contracts/openapi.yaml` · guia: [docs/MONOREPO.md](docs/MONOREPO.md)
+
+---
+
+## Supabase (Fase 1)
+
+Guia completo: [docs/FASE1_SUPABASE.md](docs/FASE1_SUPABASE.md)
+
+```powershell
+# 1. Criar projecto em supabase.com e aplicar supabase/migrations/*.sql
+# 2. Preencher SUPABASE_* no .env
+pip install httpx pandas python-dotenv
+python scripts/seed_supabase_from_csv.py
+python scripts/seed_supabase_demo_users.py
+
+cd apps/api
+pip install -r requirements.txt -r requirements-supabase.txt
+python run_dev.py
+```
+
+Login demo na API: `gestao.demo` / `demo123` (mapeado para email `@rotinaviva.local`).
 
 ---
 
