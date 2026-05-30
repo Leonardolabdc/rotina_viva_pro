@@ -1,0 +1,5 @@
+# Worker Railway/VPS — sem llm-guard (build mais leve; rule-based continua activo)
+# Para ML no Docker: use requirements-worker.txt + INSTALL_LLM_GUARD=1 no build
+-r requirements.txt
+-r requirements-supabase.txt
+-r ../../requirements-prod.txt

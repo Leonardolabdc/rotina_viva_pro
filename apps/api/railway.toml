@@ -1,8 +1,21 @@
+# Railway — serviço rotina-viva/api
+# No painel: Settings → Config-as-code → path = /apps/api/railway.toml
+# Root Directory do serviço: / (raiz do repo — NÃO apps/api)
+
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "apps/api/Dockerfile"
+watchPatterns = [
+  "apps/api/**",
+  "src/**",
+  "packages/api-contracts/**",
+  "data/**",
+  "requirements-prod.txt",
+]
 
 [deploy]
+# Vazio = usa CMD do Dockerfile (python run_prod.py). NÃO usar pnpm aqui.
+startCommand = ""
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

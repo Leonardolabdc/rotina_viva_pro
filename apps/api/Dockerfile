@@ -4,6 +4,9 @@
 
 FROM python:3.12-slim-bookworm
 
+# Railway Hobby: deixar 0 (sem PyTorch). Local/prod com RAM: --build-arg INSTALL_LLM_GUARD=1
+ARG INSTALL_LLM_GUARD=0
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONUTF8=1 \
     PYTHONIOENCODING=utf-8 \
@@ -23,10 +26,15 @@ COPY requirements-prod.txt /app/requirements-prod.txt
 COPY apps/api/requirements.txt /app/apps/api/requirements.txt
 COPY apps/api/requirements-supabase.txt /app/apps/api/requirements-supabase.txt
 COPY apps/api/requirements-llm-guard.txt /app/apps/api/requirements-llm-guard.txt
+COPY apps/api/requirements-worker-railway.txt /app/apps/api/requirements-worker-railway.txt
 COPY apps/api/requirements-worker.txt /app/apps/api/requirements-worker.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements-worker.txt
+    if [ "$INSTALL_LLM_GUARD" = "1" ]; then \
+      pip install -r requirements-worker.txt; \
+    else \
+      pip install -r requirements-worker-railway.txt; \
+    fi
 
 COPY src /app/src
 COPY apps/api/rotina_api /app/apps/api/rotina_api
