@@ -597,6 +597,17 @@ components:
           type: string
         redactedContent:
           type: string
+        riskScore:
+          type: number
+          description: Score ML do LLM Guard (0–1), quando activo
+        engine:
+          type: string
+          enum: [rule-based, llm-guard, hybrid]
+          description: Camada que produziu o veredicto
+        audit:
+          type: object
+          additionalProperties: true
+          description: Detalhe por scanner (ex. scores do LLM Guard)
 
     ChatMessageResponse:
       type: object

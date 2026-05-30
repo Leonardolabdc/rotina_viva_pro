@@ -16,6 +16,7 @@ from rotina_api.schemas import (
     ChatMessageResponse,
     ChatSession,
     CreateChatSessionRequest,
+    GuardrailVerdict,
     RagChunk,
     SendChatMessageRequest,
     UserProfile,
@@ -49,6 +50,7 @@ def _import_runner():
         run_api_chat_turn,
         stream_api_chat_turn,
         user_message,
+        verdict_to_api,
     )
 
     return (
@@ -59,6 +61,7 @@ def _import_runner():
         run_api_chat_turn,
         stream_api_chat_turn,
         user_message,
+        verdict_to_api,
     )
 
 
@@ -102,9 +105,12 @@ def _handle_guardrail(exc: Exception) -> HTTPException:
             status_code=422,
             detail={
                 "allowed": False,
-                "stage": "input",
-                "reason": v.reason,
+                "stage": v.stage or "input",
+                "reason": v.user_message,
                 "scanner": v.scanner,
+                "riskScore": v.risk_score,
+                "engine": v.engine,
+                "audit": v.audit,
                 "message": v.user_message,
             },
         )
@@ -177,6 +183,7 @@ async def _process_message(
         run_api_chat_turn,
         _stream,
         user_message,
+        verdict_to_api,
     ) = _import_runner()
 
     session = get_session(token, session_id)
@@ -228,9 +235,11 @@ async def _process_message(
     except ChatStoreError as exc:
         raise HTTPException(status_code=exc.status_code, detail={"error": "chat_store", "message": str(exc)}) from exc
 
+    guardrail_payload = verdict_to_api(result.output_guardrail or result.input_guardrail)
     return ChatMessageResponse(
         message=ChatMessage(**am),
         ragChunks=[RagChunk(**c) for c in result.rag_chunks],
+        guardrail=GuardrailVerdict(**guardrail_payload) if guardrail_payload else None,
         processingStatus=result.processing_status or None,
     )
 

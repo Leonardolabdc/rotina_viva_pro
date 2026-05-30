@@ -43,6 +43,7 @@ Recomendado: **Python 3.12** (ver `packages.toml` na raiz). Python 3.10 funciona
 | `GET /health` | ✅ |
 | `/auth/*`, `/students` | ✅ Fase 1 |
 | `/chat/*` | ✅ Fase 3 (sync + SSE) |
+| `/health` | ✅ inclui estado `llmGuard` (Fase 4) |
 | `/reports/*`, `/transcribe`, `/direct-chat/*` | 501 — fases seguintes |
 
 A lógica de negócio está em `../../src/` (`rotina_inference`, `api_chat_runner`).

@@ -17,10 +17,15 @@ from core.auth_manager import (
     educador_rotina_csv_access,
 )
 from core.database import DATA_DIR
-from core.guardrails import GuardrailVerdict, run_input_guardrails
+from typing import Any
+
+from core.guardrails import (
+    GuardrailVerdict,
+    guardrail_verdict_to_dict,
+    run_input_guardrails,
+)
 from core.security import check_llm_message_quota, record_llm_message
 from modules.rotina_inference import (
-    ChatTurnResult,
     run_rotina_chat_turn,
     stream_rotina_chat_events,
 )
@@ -37,6 +42,15 @@ class QuotaExceededError(Exception):
         self.used = used
         self.limit = limit
         super().__init__(f"Quota diária excedida ({used}/{limit}).")
+
+
+@dataclass
+class ApiChatTurnResult:
+    content: str
+    rag_chunks: list[dict[str, Any]]
+    processing_status: str = ""
+    input_guardrail: GuardrailVerdict | None = None
+    output_guardrail: GuardrailVerdict | None = None
 
 
 @dataclass
@@ -97,7 +111,7 @@ def _check_input_guardrails(
     content: str,
     history: list[dict[str, str]],
     role: str,
-) -> None:
+) -> GuardrailVerdict:
     recent = [
         str(m.get("content") or "")
         for m in history
@@ -106,6 +120,7 @@ def _check_input_guardrails(
     verdict = run_input_guardrails(content, role=role, recent_user_messages=recent)
     if not verdict.allowed:
         raise GuardrailBlockedError(verdict)
+    return verdict
 
 
 def _check_and_record_quota(username: str) -> None:
@@ -138,9 +153,9 @@ def run_api_chat_turn(
     crew_ai_enabled: bool = False,
     predictive_ml_enabled: bool = False,
     confirm_mutation: bool = False,
-) -> ChatTurnResult:
+) -> ApiChatTurnResult:
     text = (content or "").strip()
-    _check_input_guardrails(text, history, ctx.role)
+    input_guardrail = _check_input_guardrails(text, history, ctx.role)
     _check_and_record_quota(ctx.username)
 
     kwargs = _inference_kwargs(
@@ -152,8 +167,13 @@ def run_api_chat_turn(
         confirm_mutation=confirm_mutation,
     )
     result = run_rotina_chat_turn(text, **kwargs)
-    result.rag_chunks = _rag_chunks_for_api(result.rag_chunks)
-    return result
+    return ApiChatTurnResult(
+        content=result.content,
+        rag_chunks=_rag_chunks_for_api(result.rag_chunks),
+        processing_status=result.processing_status,
+        input_guardrail=input_guardrail,
+        output_guardrail=result.output_guardrail,
+    )
 
 
 def stream_api_chat_turn(
@@ -188,6 +208,12 @@ def stream_api_chat_turn(
 
 def assistant_message(content: str) -> dict[str, str]:
     return {"role": "assistant", "content": content, "createdAt": _utc_now_iso()}
+
+
+def verdict_to_api(verdict: GuardrailVerdict | None) -> dict[str, Any] | None:
+    if verdict is None:
+        return None
+    return guardrail_verdict_to_dict(verdict)
 
 
 def user_message(content: str) -> dict[str, str]:

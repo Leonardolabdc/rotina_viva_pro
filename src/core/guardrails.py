@@ -19,6 +19,7 @@ import os
 import re
 import unicodedata
 from dataclasses import dataclass
+from typing import Any
 
 from core.security import (
     mask_pii_in_duck_block,
@@ -49,6 +50,11 @@ class GuardrailVerdict:
     scanner: str = "ok"
     category: str = ""
     user_message: str | None = None
+    stage: str = ""
+    risk_score: float | None = None
+    engine: str = "rule-based"
+    audit: dict[str, Any] | None = None
+    redacted_content: str | None = None
 
 
 _ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200d\ufeff\u2060\u00ad]")
@@ -423,6 +429,46 @@ def _scan_split_attack_blob(parts: list[str]) -> GuardrailVerdict | None:
     return _match_patterns(blob, _SPLIT_ATTACK_PATTERNS)
 
 
+def _apply_llm_guard_input(text: str, base: GuardrailVerdict) -> GuardrailVerdict:
+    from core.llm_guard_layer import scan_input_llm_guard
+
+    ml = scan_input_llm_guard(text)
+    if ml is None:
+        return GuardrailVerdict(
+            allowed=base.allowed,
+            scanner=base.scanner,
+            category=base.category,
+            stage=base.stage or "input",
+            engine=base.engine,
+        )
+    audit = {"scores": ml.scores} if ml.scores else None
+    if not ml.allowed:
+        return GuardrailVerdict(
+            allowed=False,
+            scanner=ml.scanner,
+            category="llm_guard",
+            user_message=(
+                "Mensagem bloqueada pelo scanner de segurança (LLM Guard). "
+                "Reformule a pergunta de forma respeitosa e dentro do contexto escolar."
+            ),
+            stage="input",
+            risk_score=ml.risk_score,
+            engine="llm-guard",
+            audit=audit,
+        )
+    engine = "hybrid" if base.engine == "rule-based" else base.engine
+    return GuardrailVerdict(
+        allowed=True,
+        scanner=base.scanner,
+        category=base.category,
+        stage="input",
+        risk_score=ml.risk_score,
+        engine=engine,
+        audit=audit,
+        redacted_content=ml.sanitized_text if ml.sanitized_text != text else None,
+    )
+
+
 def run_input_guardrails(
     text: str,
     *,
@@ -455,7 +501,7 @@ def run_input_guardrails(
                 ),
             )
 
-    return GuardrailVerdict(allowed=True)
+    return _apply_llm_guard_input(text, GuardrailVerdict(allowed=True, stage="input"))
 
 
 def mask_pii_for_domain(text: str) -> str:
@@ -561,7 +607,67 @@ def run_output_guardrails(
     from core.security import append_hallucination_notice_if_needed
 
     redacted = append_hallucination_notice_if_needed(redacted, duck_block)
-    return redacted, GuardrailVerdict(allowed=True)
+    verdict = GuardrailVerdict(allowed=True, stage="output")
+    return _apply_llm_guard_output(text, redacted, verdict)
+
+
+def guardrail_verdict_to_dict(verdict: GuardrailVerdict) -> dict[str, Any]:
+    """Serialização para API / auditoria (Fase 4)."""
+    return {
+        "allowed": verdict.allowed,
+        "stage": verdict.stage or "unknown",
+        "reason": verdict.user_message or verdict.category or None,
+        "scanner": verdict.scanner,
+        "riskScore": verdict.risk_score,
+        "engine": verdict.engine,
+        "audit": verdict.audit,
+        "redactedContent": verdict.redacted_content,
+    }
+
+
+def _apply_llm_guard_output(
+    prompt: str,
+    sanitized: str,
+    base: GuardrailVerdict,
+) -> tuple[str, GuardrailVerdict]:
+    from core.llm_guard_layer import scan_output_llm_guard
+
+    ml = scan_output_llm_guard(prompt, sanitized)
+    if ml is None:
+        return sanitized, GuardrailVerdict(
+            allowed=base.allowed,
+            scanner=base.scanner,
+            category=base.category,
+            stage="output",
+            engine=base.engine,
+        )
+    audit = {"scores": ml.scores} if ml.scores else None
+    if not ml.allowed:
+        safe = (
+            "A resposta foi bloqueada pelo scanner de segurança (LLM Guard). "
+            "Peça uma reformulação ou contacte a gestão."
+        )
+        return safe, GuardrailVerdict(
+            allowed=False,
+            scanner=ml.scanner,
+            category="llm_guard",
+            user_message=safe,
+            stage="output",
+            risk_score=ml.risk_score,
+            engine="llm-guard",
+            audit=audit,
+        )
+    out_text = ml.sanitized_text or sanitized
+    engine = "hybrid" if base.engine == "rule-based" else base.engine
+    return out_text, GuardrailVerdict(
+        allowed=True,
+        scanner=base.scanner,
+        stage="output",
+        risk_score=ml.risk_score,
+        engine=engine,
+        audit=audit,
+        redacted_content=out_text if out_text != sanitized else None,
+    )
 
 
 def demonstrate_blocked_attacks() -> list[dict[str, str]]:

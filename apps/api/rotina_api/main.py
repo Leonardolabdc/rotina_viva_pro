@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import yaml
@@ -12,6 +13,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from rotina_api.config import API_PHASE, API_VERSION, OPENAPI_PATH
 from rotina_api.routers import api, auth, chat, students
 from rotina_api.supabase_settings import supabase_configured
+
+_LLM_GUARD_BOOT: dict[str, object] = {}
 
 
 def _worker_ready() -> bool:
@@ -24,12 +27,26 @@ def _worker_ready() -> bool:
         return False
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _LLM_GUARD_BOOT
+    if _worker_ready():
+        try:
+            from core.llm_guard_layer import warmup_llm_guard
+
+            _LLM_GUARD_BOOT = warmup_llm_guard()
+        except Exception as exc:
+            _LLM_GUARD_BOOT = {"warmupError": str(exc)}
+    yield
+
+
 app = FastAPI(
     title="Rotina Viva API",
     version=API_VERSION,
     description="Worker HTTP — reutiliza lógica em `src/` (Fase 3+).",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -45,17 +62,32 @@ app.add_middleware(
 
 
 @app.get("/health", tags=["health"], operation_id="getHealth")
-async def health() -> dict[str, str]:
+async def health() -> dict[str, object]:
     phase = API_PHASE
     if supabase_configured() and phase.startswith("0"):
         phase = "1-supabase"
-    if phase == "1-supabase" and _worker_ready():
+    if phase in ("1-supabase", "3-fastapi-worker") and _worker_ready():
         phase = "3-fastapi-worker"
+    llm_guard: dict[str, object] = dict(_LLM_GUARD_BOOT) if _LLM_GUARD_BOOT else {
+        "enabled": False,
+        "available": False,
+        "active": False,
+    }
+    if _worker_ready() and not llm_guard:
+        try:
+            from core.llm_guard_layer import llm_guard_status
+
+            llm_guard = llm_guard_status()
+        except Exception as exc:
+            llm_guard = {"enabled": False, "available": False, "active": False, "error": str(exc)}
+    if llm_guard.get("active"):
+        phase = "4-llm-guard"
     return {
         "status": "ok",
         "version": API_VERSION,
         "phase": phase,
         "supabase": "configured" if supabase_configured() else "missing",
+        "llmGuard": llm_guard,
     }
 
 

@@ -1,3 +1,5 @@
 # Fase 3+: worker completo (reutiliza src/ + dependências do PoC)
 -r requirements.txt
+-r requirements-supabase.txt
 -r ../../requirements-prod.txt
+-r requirements-llm-guard.txt

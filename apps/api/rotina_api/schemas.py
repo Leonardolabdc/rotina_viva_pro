@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -71,6 +73,9 @@ class GuardrailVerdict(BaseModel):
     reason: str | None = None
     scanner: str | None = None
     redactedContent: str | None = None
+    riskScore: float | None = None
+    engine: str | None = None
+    audit: dict[str, Any] | None = None
 
 
 class ChatMessageResponse(BaseModel):

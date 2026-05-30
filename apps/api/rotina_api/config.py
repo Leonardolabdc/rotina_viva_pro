@@ -11,6 +11,14 @@ _SRC = _REPO_ROOT / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+# .env na raiz do monorepo (apps/api não carrega automaticamente)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(_REPO_ROOT / ".env")
+except ImportError:
+    pass
+
 OPENAPI_PATH = (
     _REPO_ROOT / "packages" / "api-contracts" / "openapi.yaml"
 ).resolve()

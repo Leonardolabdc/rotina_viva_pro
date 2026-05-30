@@ -28,6 +28,7 @@ from core.database import (
     run_safe_select,
     validate_mutation_sql,
 )
+from core.guardrails import GuardrailVerdict, guardrail_verdict_to_dict, run_output_guardrails
 from core.security import mutation_requires_extra_confirmation
 from modules import ai_engine
 from modules import ml_emotion_chat
@@ -61,12 +62,9 @@ def _env_truthy(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
-def _finalize_assistant_reply(text: str, duck_block: str = "") -> str:
-    """Aplica pipeline de saída (guardrails + PII)."""
-    from core.guardrails import run_output_guardrails
-
-    safe, _ = run_output_guardrails(text or "", duck_block=duck_block or "")
-    return safe
+def _finalize_assistant_reply(text: str, duck_block: str = "") -> tuple[str, GuardrailVerdict]:
+    """Aplica pipeline de saída (guardrails + PII + LLM Guard opcional)."""
+    return run_output_guardrails(text or "", duck_block=duck_block or "")
 
 
 def _mutation_confirm_message(mut_sql: str, reason: str) -> str:
@@ -124,6 +122,7 @@ class ChatTurnResult:
     content: str
     rag_chunks: list[dict[str, Any]] = field(default_factory=list)
     processing_status: str = ""
+    output_guardrail: GuardrailVerdict | None = None
 
 
 def prepare_rotina_chat_turn(
@@ -409,9 +408,10 @@ def prepare_rotina_chat_turn(
     return ctx
 
 
-def complete_rotina_chat_sync(ctx: ChatTurnContext) -> str:
+def complete_rotina_chat_sync(ctx: ChatTurnContext) -> tuple[str, GuardrailVerdict | None]:
     if ctx.early_reply is not None:
-        return _finalize_assistant_reply(ctx.early_reply, ctx.duck_block or "")
+        content, verdict = _finalize_assistant_reply(ctx.early_reply, ctx.duck_block or "")
+        return content, verdict
 
     _crew_ok = False
     try:
@@ -435,7 +435,10 @@ def complete_rotina_chat_sync(ctx: ChatTurnContext) -> str:
                 data_dir=DATA_DIR,
                 collection=ctx.collection,
             )
-            return _finalize_assistant_reply((_cr_out.final_markdown or "").strip(), ctx.duck_block)
+            content, verdict = _finalize_assistant_reply(
+                (_cr_out.final_markdown or "").strip(), ctx.duck_block
+            )
+            return content, verdict
         except Exception:
             pass
 
@@ -467,8 +470,8 @@ def stream_rotina_chat_tokens(ctx: ChatTurnContext) -> Iterable[str]:
         _crew_ok = False
 
     if ctx.use_crew and _crew_ok:
-        text = complete_rotina_chat_sync(ctx)
-        yield text
+        content, verdict = complete_rotina_chat_sync(ctx)
+        yield content
         return
 
     yield from ai_engine.processar_resposta_chat_stream(
@@ -495,11 +498,12 @@ def run_rotina_chat_turn(
         audit_role=audit_role,
         **kwargs,
     )
-    content = complete_rotina_chat_sync(ctx)
+    content, output_guardrail = complete_rotina_chat_sync(ctx)
     return ChatTurnResult(
         content=content,
         rag_chunks=ctx.rag_chunks,
         processing_status=ctx.processing_status,
+        output_guardrail=output_guardrail,
     )
 
 
@@ -530,13 +534,14 @@ def stream_rotina_chat_events(
         raw_parts.append(token)
         yield {"event": "token", "data": {"text": token}}
 
-    content = _finalize_assistant_reply("".join(raw_parts).strip(), ctx.duck_block)
+    content, output_guardrail = _finalize_assistant_reply("".join(raw_parts).strip(), ctx.duck_block)
     yield {
         "event": "done",
         "data": {
             "content": content,
             "ragChunks": ctx.rag_chunks,
             "processingStatus": ctx.processing_status,
+            "guardrail": guardrail_verdict_to_dict(output_guardrail) if output_guardrail else None,
         },
     }
 

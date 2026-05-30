@@ -1,0 +1,3 @@
+# Fase 4 — LLM Guard (Protect AI) — opcional mas recomendado no worker
+# Pesado: descarrega modelos ML na 1.ª execução (~centenas de MB).
+llm-guard>=0.3.16,<0.4
