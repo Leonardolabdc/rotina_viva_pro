@@ -29,11 +29,10 @@ COPY apps/api/requirements-llm-guard.txt /app/apps/api/requirements-llm-guard.tx
 COPY apps/api/requirements-worker-railway.txt /app/apps/api/requirements-worker-railway.txt
 COPY apps/api/requirements-worker.txt /app/apps/api/requirements-worker.txt
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    if [ "$INSTALL_LLM_GUARD" = "1" ]; then \
-      pip install -r requirements-worker.txt; \
+RUN if [ "$INSTALL_LLM_GUARD" = "1" ]; then \
+      pip install --no-cache-dir -r requirements-worker.txt; \
     else \
-      pip install -r requirements-worker-railway.txt; \
+      pip install --no-cache-dir -r requirements-worker-railway.txt; \
     fi
 
 COPY src /app/src
