@@ -1,12 +1,21 @@
-/** Base da API: local directo; na Vercel usa proxy same-origin (/api-proxy). */
-function resolveApiBase(): string {
-  if (process.env.NEXT_PUBLIC_VERCEL === "1") {
+/** Base da API: local directo; na Vercel (ou qualquer host público) usa proxy same-origin. */
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") {
+      return "/api-proxy";
+    }
+  }
+  if (process.env.NEXT_PUBLIC_VERCEL === "1" || process.env.VERCEL === "1") {
     return "/api-proxy";
   }
-  return process.env.NEXT_PUBLIC_ROTINA_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+  return (
+    process.env.NEXT_PUBLIC_ROTINA_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000"
+  );
 }
 
-export const API_BASE = resolveApiBase();
+/** @deprecated use getApiBase() — valor fixo no load do módulo falha na Vercel sem env explícita */
+export const API_BASE = getApiBase();
 
 export const TOKEN_KEY = "rotina_access_token";
 
@@ -100,7 +109,7 @@ export async function apiFetch<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...options, headers });
   if (!res.ok) {
     throw await parseError(res);
   }
@@ -150,7 +159,7 @@ export async function streamChatMessage(
   handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages/stream`, {
+  const res = await fetch(`${getApiBase()}/chat/sessions/${sessionId}/messages/stream`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

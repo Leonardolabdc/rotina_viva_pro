@@ -24,6 +24,10 @@ export function LoginForm() {
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
+      } else if (err instanceof TypeError) {
+        setError(
+          "Não foi possível ligar à API. Em local: arranque .\\scripts\\start_api_dev.ps1. Na Vercel: confirme ROTINA_API_URL no projecto.",
+        );
       } else {
         setError("Não foi possível entrar. Verifique se a API está a correr.");
       }

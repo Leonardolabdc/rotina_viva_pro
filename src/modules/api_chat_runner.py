@@ -17,7 +17,6 @@ from core.auth_manager import (
     educador_rotina_csv_access,
 )
 from core.database import DATA_DIR
-from typing import Any
 
 from core.guardrails import (
     GuardrailVerdict,
