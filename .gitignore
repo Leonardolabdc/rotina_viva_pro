@@ -1,0 +1,63 @@
+# Ambientes Virtuais
+.venv/
+venv/
+env/
+bin/
+obj/
+
+# Configurações e Chaves (CRÍTICO)
+.env
+.env.local
+*.pem
+.streamlit/secrets.toml
+
+# Python - Cache e Compilação
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.Python
+
+# IDEs (VS Code, PyCharm)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Bancos de Dados e Persistência (Rotina Viva)
+*.db
+*.duckdb
+*.wal
+*.db.wal
+chroma_db/
+data/chroma/
+data/.rotina_chat/
+data/rotina_users.json
+data/_chroma_test_del/
+data/vector_db/
+# Modelos ML — ignorar experimentais; bundle de produção (dataset público) pode ir ao repo
+data/ml_models/*.pkl
+!data/ml_models/emotion_flaml_bundle.pkl
+data/.rotina_browser_sessions/
+data/.rotina_audit/
+data/.rotina_csv_backups/
+data/.rotina_usage/
+storage/
+
+# Docker
+docker-data/
+.cache/
+
+# DeepEval (cache/telemetria — gerado ao correr tests/test_rotina_viva.py)
+.deepeval/
+tests/.deepeval/
+
+# Relatórios gerados localmente
+data/SEGURANCA_ANTES_DEPOIS.md
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini

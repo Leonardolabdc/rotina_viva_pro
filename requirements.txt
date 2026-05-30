@@ -1,0 +1,2 @@
+# Streamlit Community Cloud lê este ficheiro na raiz do repositório.
+-r requirements-streamlit-cloud.txt
