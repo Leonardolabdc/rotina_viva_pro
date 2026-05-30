@@ -1,5 +1,12 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_ROTINA_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+/** Base da API: local directo; na Vercel usa proxy same-origin (/api-proxy). */
+function resolveApiBase(): string {
+  if (process.env.NEXT_PUBLIC_VERCEL === "1") {
+    return "/api-proxy";
+  }
+  return process.env.NEXT_PUBLIC_ROTINA_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+}
+
+export const API_BASE = resolveApiBase();
 
 export const TOKEN_KEY = "rotina_access_token";
 
