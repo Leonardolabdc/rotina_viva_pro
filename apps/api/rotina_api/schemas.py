@@ -28,3 +28,53 @@ class StudentSummary(BaseModel):
     id: int
     name: str
     className: str | None = None
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    createdAt: str | None = None
+
+
+class ChatSession(BaseModel):
+    id: str
+    messages: list[ChatMessage] = Field(default_factory=list)
+    dataSourceMode: str = "auto"
+    crewAiEnabled: bool = False
+    predictiveMlEnabled: bool = False
+
+
+class CreateChatSessionRequest(BaseModel):
+    dataSourceMode: str = "auto"
+    crewAiEnabled: bool = False
+    predictiveMlEnabled: bool = False
+
+
+class SendChatMessageRequest(BaseModel):
+    content: str = Field(min_length=1)
+    dataSourceMode: str | None = None
+    crewAiEnabled: bool | None = None
+    predictiveMlEnabled: bool | None = None
+    confirmMutation: bool = False
+
+
+class RagChunk(BaseModel):
+    source: str | None = None
+    chunk: str | None = None
+    distance: float | None = None
+    text: str | None = None
+
+
+class GuardrailVerdict(BaseModel):
+    allowed: bool
+    stage: str
+    reason: str | None = None
+    scanner: str | None = None
+    redactedContent: str | None = None
+
+
+class ChatMessageResponse(BaseModel):
+    message: ChatMessage
+    ragChunks: list[RagChunk] = Field(default_factory=list)
+    guardrail: GuardrailVerdict | None = None
+    processingStatus: str | None = None

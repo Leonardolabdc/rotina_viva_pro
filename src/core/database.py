@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATA_DIR = Path(os.getenv("ROTINA_DATA_DIR", "data")).resolve()
+_REPO_DATA = Path(__file__).resolve().parents[2] / "data"
+DATA_DIR = Path(os.getenv("ROTINA_DATA_DIR", str(_REPO_DATA))).resolve()
 
 ROTINA_CHAT_SESSION_SUBDIR = ".rotina_chat"
 ROTINA_BROWSER_SESSION_SUBDIR = ".rotina_browser_sessions"
@@ -1307,7 +1308,15 @@ def _duckdb_csv_reload_token(data_dir: Path) -> str:
 
 @st.cache_resource
 def get_duckdb_connection(data_dir_str: str, _csv_token: str) -> duckdb.DuckDBPyConnection:
-    data_dir = Path(data_dir_str)
+    return _build_duckdb_connection(Path(data_dir_str))
+
+
+def open_duckdb_connection(data_dir: Path | str) -> duckdb.DuckDBPyConnection:
+    """Abre DuckDB em memória a partir dos CSVs — sem cache Streamlit (FastAPI worker)."""
+    return _build_duckdb_connection(Path(data_dir))
+
+
+def _build_duckdb_connection(data_dir: Path) -> duckdb.DuckDBPyConnection:
     info_csv = _resolve_info_alunos_csv(data_dir)
     diario_csv = data_dir / "diario_estruturado.csv"
     if not info_csv.exists():

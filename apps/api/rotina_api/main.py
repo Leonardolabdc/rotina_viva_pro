@@ -10,8 +10,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from rotina_api.config import API_PHASE, API_VERSION, OPENAPI_PATH
-from rotina_api.routers import api, auth, students
+from rotina_api.routers import api, auth, chat, students
 from rotina_api.supabase_settings import supabase_configured
+
+
+def _worker_ready() -> bool:
+    try:
+        import duckdb  # noqa: F401
+        from modules import rotina_inference  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
 
 app = FastAPI(
     title="Rotina Viva API",
@@ -38,6 +49,8 @@ async def health() -> dict[str, str]:
     phase = API_PHASE
     if supabase_configured() and phase.startswith("0"):
         phase = "1-supabase"
+    if phase == "1-supabase" and _worker_ready():
+        phase = "3-fastapi-worker"
     return {
         "status": "ok",
         "version": API_VERSION,
@@ -66,4 +79,5 @@ async def serve_contract_json() -> JSONResponse:
 
 app.include_router(auth.router)
 app.include_router(students.router)
+app.include_router(chat.router)
 app.include_router(api.router)

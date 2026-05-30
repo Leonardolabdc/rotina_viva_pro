@@ -22,11 +22,13 @@ pip install -r requirements.txt -r requirements-supabase.txt
 
 Requer `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_JWT_SECRET` no `.env` da raiz.
 
-**Fase 3+** (worker com lógica `src/` + ML/RAG):
+**Fase 3** (worker com lógica `src/` + ML/RAG + chat):
 
 ```powershell
 pip install -r requirements-worker.txt
 ```
+
+Guia completo: [docs/FASE3_FASTAPI.md](../../docs/FASE3_FASTAPI.md)
 
 Recomendado: **Python 3.12** (ver `packages.toml` na raiz). Python 3.10 funciona para a Fase 0.
 
@@ -34,11 +36,13 @@ Recomendado: **Python 3.12** (ver `packages.toml` na raiz). Python 3.10 funciona
 - Health: http://localhost:8000/health
 - Contrato YAML: http://localhost:8000/openapi.yaml
 
-## Estado (Fase 0)
+## Estado
 
 | Rota | Estado |
 |------|--------|
-| `GET /health` | ✅ Implementada |
-| Demais rotas | 501 — stubs alinhados ao contrato |
+| `GET /health` | ✅ |
+| `/auth/*`, `/students` | ✅ Fase 1 |
+| `/chat/*` | ✅ Fase 3 (sync + SSE) |
+| `/reports/*`, `/transcribe`, `/direct-chat/*` | 501 — fases seguintes |
 
-A lógica de negócio permanece em `../../src/` até a Fase 3.
+A lógica de negócio está em `../../src/` (`rotina_inference`, `api_chat_runner`).

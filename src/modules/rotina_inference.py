@@ -10,7 +10,8 @@ from __future__ import annotations
 import os
 import re
 import time
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Generator, Iterable
 
 import duckdb
 
@@ -20,12 +21,14 @@ from core.database import (
     _duckdb_csv_reload_token,
     _mensagem_csv_aberto_simples,
     get_duckdb_connection,
+    open_duckdb_connection,
     post_mutation_verification_block,
     promote_plan_sql_mutation_field,
     run_mutation_and_persist,
     run_safe_select,
     validate_mutation_sql,
 )
+from core.security import mutation_requires_extra_confirmation
 from modules import ai_engine
 from modules import ml_emotion_chat
 from modules.chat_service import (
@@ -66,7 +69,64 @@ def _finalize_assistant_reply(text: str, duck_block: str = "") -> str:
     return safe
 
 
-def run_rotina_chat_inference(
+def _mutation_confirm_message(mut_sql: str, reason: str) -> str:
+    if reason == "delete":
+        header = (
+            "⚠️ **Confirmação necessária:** esta operação **apaga dados** nos CSV "
+            "(irreversível; há backup automático)."
+        )
+    else:
+        header = (
+            "⚠️ **Confirmação necessária:** este UPDATE pode alterar **vários registos** "
+            "(não está limitado a um `id_aluno` ou `id_registro`)."
+        )
+    return (
+        f"{header}\n\n```sql\n{mut_sql}\n```\n\n"
+        "Nada foi gravado. Reenvie com `confirmMutation: true` para executar, "
+        "ou refine o SQL (ex.: `WHERE id_aluno = 5`)."
+    )
+
+
+def _open_inference_duckdb():
+    """DuckDB para worker/API (sem cache Streamlit)."""
+    try:
+        return open_duckdb_connection(DATA_DIR)
+    except Exception:
+        return get_duckdb_connection(str(DATA_DIR), _duckdb_csv_reload_token(DATA_DIR))
+
+
+def _reload_inference_duckdb():
+    try:
+        return open_duckdb_connection(DATA_DIR)
+    except Exception:
+        return get_duckdb_connection(str(DATA_DIR), _duckdb_csv_reload_token(DATA_DIR))
+
+
+@dataclass
+class ChatTurnContext:
+    user_text: str
+    duck_block: str = ""
+    rag_block: str = "(busca em documentos não solicitada)"
+    rag_chunks: list[dict[str, Any]] = field(default_factory=list)
+    history: list[dict[str, str]] = field(default_factory=list)
+    extra_chat: str = ""
+    processing_status: str = ""
+    early_reply: str | None = None
+    use_crew: bool = False
+    predictive_ml: bool = False
+    conn: duckdb.DuckDBPyConnection | None = None
+    collection: Any = None
+    ml_addon: str = ""
+
+
+@dataclass
+class ChatTurnResult:
+    content: str
+    rag_chunks: list[dict[str, Any]] = field(default_factory=list)
+    processing_status: str = ""
+
+
+def prepare_rotina_chat_turn(
     user_text: str,
     *,
     predictive_ml: bool = False,
@@ -79,42 +139,31 @@ def run_rotina_chat_inference(
     allow_mutations: bool = False,
     allow_delete_mutations: bool = True,
     read_only_db: bool = True,
-) -> str:
-    """
-    Devolve o Markdown/texto final da resposta do assistente (como no Streamlit).
-
-    Por defeito não executa mutações CSV (`allow_mutations=False`) — adequado a golden tests.
-    CrewAI só corre se `use_crewai=True` ou `ROTINA_EVAL_CREWAI_MODE=true`.
-    """
+    confirm_mutation: bool = False,
+    audit_username: str | None = None,
+    audit_role: str | None = None,
+) -> ChatTurnContext:
     um = (user_text or "").strip()
+    ctx = ChatTurnContext(user_text=um, history=list(history or []))
     if not um:
-        return ""
+        ctx.early_reply = ""
+        return ctx
 
-    from core.guardrails import run_input_guardrails
-
-    _recent = [
-        str(m.get("content") or "")
-        for m in (history or [])
-        if m.get("role") == "user" and (m.get("content") or "").strip()
-    ]
-    _guard = run_input_guardrails(um, recent_user_messages=_recent)
-    if not _guard.allowed:
-        return _guard.user_message or "Mensagem bloqueada por política de segurança."
-
-    history_for_model = history or []
     mode_ds = (data_source_mode or os.getenv("ROTINA_EVAL_DATA_SOURCE_MODE") or "auto").strip()
-    use_crew = (
+    ctx.use_crew = (
         bool(use_crewai) if use_crewai is not None else _env_truthy("ROTINA_EVAL_CREWAI_MODE")
     )
+    ctx.predictive_ml = predictive_ml
     _planner = planner_extra if planner_extra is not None else _planner_suffix_gestao()
 
     try:
-        conn = get_duckdb_connection(str(DATA_DIR), _duckdb_csv_reload_token(DATA_DIR))
+        ctx.conn = _open_inference_duckdb()
     except Exception as e:
-        return (
+        ctx.early_reply = (
             "DuckDB indisponível. Verifique os CSVs em `ROTINA_DATA_DIR` e se não há erro de caminho.\n\n"
             f"_(detalhe técnico: {e})_"
         )
+        return ctx
 
     collection = None
     if mode_ds in ("auto", "documents"):
@@ -122,8 +171,9 @@ def run_rotina_chat_inference(
             collection = get_chroma_collection(str(CHROMA_DIR), str(DATA_DIR), INDEX_PROFILE)
         except Exception:
             collection = None
+    ctx.collection = collection
 
-    ml_addon = ml_emotion_chat.build_emotion_ml_llm_addon(
+    ctx.ml_addon = ml_emotion_chat.build_emotion_ml_llm_addon(
         um, DATA_DIR, predictive_session=predictive_ml
     )
 
@@ -134,17 +184,19 @@ def run_rotina_chat_inference(
         plan_force = "rag_only"
 
     planning_user_text = augment_cadastro_question_with_history(
-        um, history_for_model, parent_scope=parent_scope
+        um, ctx.history, parent_scope=parent_scope
     )
     if parent_scope is not None:
         _fam_block = familia_student_query_blocked_message(um, parent_scope)
         if _fam_block:
-            return _finalize_assistant_reply(_fam_block, "")
+            ctx.early_reply = _fam_block
+            return ctx
+
     plan = normalize_plan(
         ai_engine.llm_plan_sources(
             planning_user_text,
             force=plan_force,
-            history=history_for_model,
+            history=ctx.history,
             extra_planner_suffix=_planner,
         ),
         planning_user_text,
@@ -153,16 +205,11 @@ def run_rotina_chat_inference(
     plan = promote_plan_sql_mutation_field(plan)
     plan = apply_infer_sql_to_plan(plan, um)
 
-    # Perguntas de cardápio/refeições devem privilegiar o PDF nutricional no RAG.
-    # Se deixarmos SQL aqui, a Crew tende a responder "comeu bem/pouco/recusou" (diário),
-    # que não responde "o que tem de almoço na Quarta-feira".
     if is_rag_nutrition_meals_scope_question(um):
         plan = dict(plan)
         plan["fontes"] = ["rag"]
         plan["sql"] = None
 
-    # Incidentes socioemocionais/comportamentais ("machucou", "chorou", etc.)
-    # não devem ficar só em SQL do diário; precisam de base documental (procedimentos).
     if ml_emotion_chat.predictive_message_looks_emotional(um):
         plan = dict(plan)
         plan["fontes"] = ["rag"]
@@ -192,7 +239,7 @@ def run_rotina_chat_inference(
     mutation_duplicate_warn = ""
     mutation_attempted = False
     mutation_result_msg = ""
-    _conn = conn
+    _conn = ctx.conn
     mut_sql = plan.get("mutacao") if allow_mutations else None
 
     _planned_sql = plan.get("sql")
@@ -227,20 +274,29 @@ def run_rotina_chat_inference(
         and _conn is not None
         and allow_mutations
     ):
+        _mut_stripped = mut_sql.strip()
+        _need_confirm, _confirm_reason = mutation_requires_extra_confirmation(_mut_stripped)
+        if _need_confirm and (_confirm_reason != "delete" or allow_delete_mutations):
+            if not confirm_mutation:
+                ctx.early_reply = _mutation_confirm_message(_mut_stripped, _confirm_reason)
+                return ctx
         mutation_attempted = True
         _mmsg, mok, _dup_w = run_mutation_and_persist(
             _conn,
-            mut_sql.strip(),
+            _mut_stripped,
             DATA_DIR,
             allow_delete=allow_delete_mutations,
+            audit_username=audit_username,
+            audit_role=audit_role,
         )
         mutation_result_msg = _mmsg
         if _dup_w:
             mutation_duplicate_warn = _dup_w
         if mok:
             mutation_ok = True
-            mut_sql_done = mut_sql.strip()
-            _conn = get_duckdb_connection(str(DATA_DIR), _duckdb_csv_reload_token(DATA_DIR))
+            mut_sql_done = _mut_stripped
+            _conn = _reload_inference_duckdb()
+            ctx.conn = _conn
         else:
             mutation_fail_detail = _mmsg
 
@@ -251,7 +307,7 @@ def run_rotina_chat_inference(
             sql_use = sql.strip()
             if parent_scope is not None:
                 sql_use = apply_parent_sql_scope(sql_use, parent_scope[0])
-            _ = _processing_status_sql_line(um, sql_use)
+            ctx.processing_status = _processing_status_sql_line(um, sql_use)
             duck_block, ok = run_safe_select(_conn, sql_use)
             if not ok:
                 duck_block = (
@@ -303,19 +359,18 @@ def run_rotina_chat_inference(
         rag_question = augment_question_for_parent_rag(um, parent_scope[0], parent_scope[1])
 
     rag_block = "(busca em documentos não solicitada)"
+    rag_chunks: list[dict[str, Any]] = []
     if "rag" in fontes and collection is not None:
-        rag_block, _chunks = retrieve_rag_context_and_chunks(
+        rag_block, rag_chunks = retrieve_rag_context_and_chunks(
             collection, rag_question, k=ai_engine.rag_context_chunks_top_k()
         )
-    elif "rag" in fontes and collection is None:
-        pass
 
     if ai_engine.use_openai_compatible_chat() and ROTINA_API_PLAN_TO_CHAT_DELAY_SEC > 0:
         time.sleep(ROTINA_API_PLAN_TO_CHAT_DELAY_SEC)
 
     _extra_chat = (chat_extra_system or "").strip()
-    if ml_addon.strip():
-        _extra_chat = ((_extra_chat + "\n\n") if _extra_chat else "") + ml_addon.strip()
+    if ctx.ml_addon.strip():
+        _extra_chat = ((_extra_chat + "\n\n") if _extra_chat else "") + ctx.ml_addon.strip()
     if mutation_ok:
         _extra_chat = ((_extra_chat + "\n\n") if _extra_chat else "") + ai_engine.system_mutation_applied()
         if mutation_duplicate_warn:
@@ -328,18 +383,35 @@ def run_rotina_chat_inference(
         )
 
     if mutation_attempted and isinstance(mut_sql, str) and mut_sql.strip():
-        return build_mutation_direct_reply(
+        ctx.early_reply = build_mutation_direct_reply(
             mut_sql=mut_sql.strip(),
             ok=mutation_ok,
             result_message=mutation_result_msg or mutation_fail_detail,
             duplicate_warn=mutation_duplicate_warn,
             duck_block=duck_block,
         )
+        ctx.duck_block = duck_block
+        ctx.rag_chunks = rag_chunks
+        return ctx
 
     _planned_mut_raw = plan.get("mutacao")
     _has_planned_mutacao = isinstance(_planned_mut_raw, str) and bool(_planned_mut_raw.strip())
     if _user_requests_student_delete(um) and not _has_planned_mutacao:
-        return _reply_delete_not_persisted_no_mutation(perfil_educador=not allow_delete_mutations)
+        ctx.early_reply = _reply_delete_not_persisted_no_mutation(
+            perfil_educador=not allow_delete_mutations
+        )
+        return ctx
+
+    ctx.duck_block = duck_block
+    ctx.rag_block = rag_block
+    ctx.rag_chunks = rag_chunks
+    ctx.extra_chat = _extra_chat
+    return ctx
+
+
+def complete_rotina_chat_sync(ctx: ChatTurnContext) -> str:
+    if ctx.early_reply is not None:
+        return _finalize_assistant_reply(ctx.early_reply, ctx.duck_block or "")
 
     _crew_ok = False
     try:
@@ -349,33 +421,177 @@ def run_rotina_chat_inference(
     except Exception:
         _crew_ok = False
 
-    if use_crew and _crew_ok:
+    if ctx.use_crew and _crew_ok:
         from modules.rotina_crew.runner import run_rotina_crew_chat
 
         try:
             _cr_out = run_rotina_crew_chat(
-                user_text=um,
-                duck_block=duck_block,
-                rag_block=rag_block,
-                ml_addon=ml_addon or "",
-                predictive_ml=predictive_ml,
-                conn=_conn,
+                user_text=ctx.user_text,
+                duck_block=ctx.duck_block,
+                rag_block=ctx.rag_block,
+                ml_addon=ctx.ml_addon or "",
+                predictive_ml=ctx.predictive_ml,
+                conn=ctx.conn,
                 data_dir=DATA_DIR,
-                collection=collection,
+                collection=ctx.collection,
             )
-            return _finalize_assistant_reply((_cr_out.final_markdown or "").strip(), duck_block)
+            return _finalize_assistant_reply((_cr_out.final_markdown or "").strip(), ctx.duck_block)
         except Exception:
             pass
 
     return _finalize_assistant_reply(
         "".join(
             ai_engine.processar_resposta_chat_stream(
-                um,
-                duck_block,
-                rag_block,
-                history_for_model,
-                extra_system=_extra_chat or None,
+                ctx.user_text,
+                ctx.duck_block,
+                ctx.rag_block,
+                ctx.history,
+                extra_system=ctx.extra_chat or None,
             )
         ).strip(),
-        duck_block,
+        ctx.duck_block,
     )
+
+
+def stream_rotina_chat_tokens(ctx: ChatTurnContext) -> Iterable[str]:
+    if ctx.early_reply is not None:
+        yield ctx.early_reply
+        return
+
+    _crew_ok = False
+    try:
+        from modules.rotina_crew.runner import crewai_import_ok as _crew_imp_ok
+
+        _crew_ok = _crew_imp_ok()
+    except Exception:
+        _crew_ok = False
+
+    if ctx.use_crew and _crew_ok:
+        text = complete_rotina_chat_sync(ctx)
+        yield text
+        return
+
+    yield from ai_engine.processar_resposta_chat_stream(
+        ctx.user_text,
+        ctx.duck_block,
+        ctx.rag_block,
+        ctx.history,
+        extra_system=ctx.extra_chat or None,
+    )
+
+
+def run_rotina_chat_turn(
+    user_text: str,
+    *,
+    confirm_mutation: bool = False,
+    audit_username: str | None = None,
+    audit_role: str | None = None,
+    **kwargs: Any,
+) -> ChatTurnResult:
+    ctx = prepare_rotina_chat_turn(
+        user_text,
+        confirm_mutation=confirm_mutation,
+        audit_username=audit_username,
+        audit_role=audit_role,
+        **kwargs,
+    )
+    content = complete_rotina_chat_sync(ctx)
+    return ChatTurnResult(
+        content=content,
+        rag_chunks=ctx.rag_chunks,
+        processing_status=ctx.processing_status,
+    )
+
+
+def stream_rotina_chat_events(
+    user_text: str,
+    *,
+    confirm_mutation: bool = False,
+    audit_username: str | None = None,
+    audit_role: str | None = None,
+    **kwargs: Any,
+) -> Generator[dict[str, Any], None, None]:
+    yield {"event": "status", "data": {"phase": "planning"}}
+    ctx = prepare_rotina_chat_turn(
+        user_text,
+        confirm_mutation=confirm_mutation,
+        audit_username=audit_username,
+        audit_role=audit_role,
+        **kwargs,
+    )
+    if ctx.processing_status:
+        yield {"event": "status", "data": {"phase": "sql", "detail": ctx.processing_status}}
+    if ctx.rag_chunks:
+        yield {"event": "status", "data": {"phase": "rag", "chunks": len(ctx.rag_chunks)}}
+    yield {"event": "status", "data": {"phase": "generating"}}
+
+    raw_parts: list[str] = []
+    for token in stream_rotina_chat_tokens(ctx):
+        raw_parts.append(token)
+        yield {"event": "token", "data": {"text": token}}
+
+    content = _finalize_assistant_reply("".join(raw_parts).strip(), ctx.duck_block)
+    yield {
+        "event": "done",
+        "data": {
+            "content": content,
+            "ragChunks": ctx.rag_chunks,
+            "processingStatus": ctx.processing_status,
+        },
+    }
+
+
+def run_rotina_chat_inference(
+    user_text: str,
+    *,
+    predictive_ml: bool = False,
+    data_source_mode: str | None = None,
+    use_crewai: bool | None = None,
+    parent_scope: tuple[int, str] | None = None,
+    history: list[dict[str, str]] | None = None,
+    chat_extra_system: str | None = None,
+    planner_extra: str | None = None,
+    allow_mutations: bool = False,
+    allow_delete_mutations: bool = True,
+    read_only_db: bool = True,
+    confirm_mutation: bool = False,
+    audit_username: str | None = None,
+    audit_role: str | None = None,
+) -> str:
+    """
+    Devolve o Markdown/texto final da resposta do assistente (como no Streamlit).
+
+    Por defeito não executa mutações CSV (`allow_mutations=False`) — adequado a golden tests.
+    CrewAI só corre se `use_crewai=True` ou `ROTINA_EVAL_CREWAI_MODE=true`.
+    """
+    um = (user_text or "").strip()
+    if not um:
+        return ""
+
+    from core.guardrails import run_input_guardrails
+
+    _recent = [
+        str(m.get("content") or "")
+        for m in (history or [])
+        if m.get("role") == "user" and (m.get("content") or "").strip()
+    ]
+    _guard = run_input_guardrails(um, recent_user_messages=_recent)
+    if not _guard.allowed:
+        return _guard.user_message or "Mensagem bloqueada por política de segurança."
+
+    return run_rotina_chat_turn(
+        um,
+        predictive_ml=predictive_ml,
+        data_source_mode=data_source_mode,
+        use_crewai=use_crewai,
+        parent_scope=parent_scope,
+        history=history,
+        chat_extra_system=chat_extra_system,
+        planner_extra=planner_extra,
+        allow_mutations=allow_mutations,
+        allow_delete_mutations=allow_delete_mutations,
+        read_only_db=read_only_db,
+        confirm_mutation=confirm_mutation,
+        audit_username=audit_username,
+        audit_role=audit_role,
+    ).content
