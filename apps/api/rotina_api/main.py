@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from rotina_api.config import API_PHASE, API_VERSION, OPENAPI_PATH
 from rotina_api.routers import api, auth, chat, students
-from rotina_api.supabase_settings import supabase_configured
+from rotina_api.supabase_settings import supabase_configured, supabase_env_status
 
 _LLM_GUARD_BOOT: dict[str, object] = {}
 
@@ -70,7 +70,9 @@ app.add_middleware(
 
 @app.get("/health", tags=["health"], operation_id="getHealth")
 async def health() -> dict[str, object]:
-    phase = API_PHASE
+    import os
+
+    phase = os.getenv("ROTINA_API_PHASE", API_PHASE).strip() or API_PHASE
     if supabase_configured() and phase.startswith("0"):
         phase = "1-supabase"
     if phase in ("1-supabase", "3-fastapi-worker") and _worker_ready():
@@ -94,6 +96,7 @@ async def health() -> dict[str, object]:
         "version": API_VERSION,
         "phase": phase,
         "supabase": "configured" if supabase_configured() else "missing",
+        "supabaseEnv": supabase_env_status(),
         "llmGuard": llm_guard,
     }
 
