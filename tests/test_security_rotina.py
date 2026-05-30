@@ -262,6 +262,7 @@ def test_infer_turma_count_sql() -> None:
     from modules.chat_service import (
         enrich_duck_block_cadastro_count,
         infer_structured_select_sql,
+        plain_chat_text,
         try_build_cadastro_count_early_reply,
     )
 
@@ -278,6 +279,9 @@ def test_infer_turma_count_sql() -> None:
     reply = try_build_cadastro_count_early_reply(um, block)
     assert reply and "47" in reply and "Infantil 2" in reply
     assert "**" not in reply
+    assert plain_chat_text("A turma **Infantil 2** tem **47** alunos.") == (
+        "A turma Infantil 2 tem 47 alunos."
+    )
 
     sql2 = infer_structured_select_sql("quantos alunos tem na turma 2")
     assert sql2 and "Infantil 2" in sql2

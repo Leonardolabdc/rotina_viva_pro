@@ -1,4 +1,5 @@
 import { ChatMessage } from "@/lib/api";
+import { plainChatText } from "@/lib/chatText";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -16,7 +17,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : "rounded-bl-md border border-border bg-surface text-foreground"
         }`}
       >
-        {message.content}
+        {plainChatText(message.content)}
       </div>
     </div>
   );
@@ -30,7 +31,7 @@ export function StreamingBubble({ content }: StreamingBubbleProps) {
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] rounded-2xl rounded-bl-md border border-border bg-surface px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
-        {content}
+        {plainChatText(content)}
         <span className="ml-1 inline-block h-4 w-1 animate-pulse-dot bg-primary align-middle" />
       </div>
     </div>

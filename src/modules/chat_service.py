@@ -594,6 +594,18 @@ def enrich_duck_block_cadastro_count(duck_block: str, user_message: str) -> str:
     return duck_block + "\n\n" + extra
 
 
+def plain_chat_text(text: str) -> str:
+    """Remove ênfase markdown (**/__ ) — UI Next.js mostra texto puro."""
+    s = text or ""
+    for _ in range(3):
+        s2 = re.sub(r"\*\*(.+?)\*\*", r"\1", s, flags=re.DOTALL)
+        s2 = re.sub(r"__(.+?)__", r"\1", s2, flags=re.DOTALL)
+        if s2 == s:
+            break
+        s = s2
+    return s
+
+
 def try_build_cadastro_count_early_reply(user_message: str, duck_block: str) -> str | None:
     """Resposta determinística para contagens — evita o LLM ignorar tabela agregada."""
     um = (user_message or "").strip()

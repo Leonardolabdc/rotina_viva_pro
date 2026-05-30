@@ -25,6 +25,7 @@ from core.guardrails import (
     run_input_guardrails,
 )
 from core.security import check_llm_message_quota, record_llm_message
+from modules.chat_service import plain_chat_text
 from modules.rotina_inference import (
     run_rotina_chat_turn,
     stream_rotina_chat_events,
@@ -168,7 +169,7 @@ def run_api_chat_turn(
     )
     result = run_rotina_chat_turn(text, **kwargs)
     return ApiChatTurnResult(
-        content=result.content,
+        content=plain_chat_text(result.content),
         rag_chunks=_rag_chunks_for_api(result.rag_chunks),
         processing_status=result.processing_status,
         input_guardrail=input_guardrail,
@@ -201,6 +202,8 @@ def stream_api_chat_turn(
     for event in stream_rotina_chat_events(text, **kwargs):
         if event.get("event") == "done":
             data = dict(event.get("data") or {})
+            if isinstance(data.get("content"), str):
+                data["content"] = plain_chat_text(data["content"])
             data["ragChunks"] = _rag_chunks_for_api(data.get("ragChunks") or [])
             event = {**event, "data": data}
         yield event
