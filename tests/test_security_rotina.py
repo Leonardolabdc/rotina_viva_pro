@@ -255,6 +255,24 @@ def test_backup_and_audit() -> None:
     print("OK test_backup_and_audit")
 
 
+def test_infer_turma_count_sql() -> None:
+    from pathlib import Path
+
+    from core.database import open_duckdb_connection
+    from modules.chat_service import infer_structured_select_sql
+
+    data_dir = Path(__file__).resolve().parents[1] / "data"
+    sql = infer_structured_select_sql("quantos alunos tem na turma infantil 2")
+    assert sql and "Infantil 2" in sql and "COUNT(*)" in sql.upper()
+    conn = open_duckdb_connection(data_dir)
+    rows = conn.execute(sql).fetchall()
+    assert rows[0][0] == 47
+
+    sql2 = infer_structured_select_sql("quantos alunos tem na turma 2")
+    assert sql2 and "Infantil 2" in sql2
+    print("OK test_infer_turma_count_sql")
+
+
 def main() -> None:
     test_password_hash_and_verify()
     test_mask_phone_and_duck_block()
@@ -262,6 +280,7 @@ def main() -> None:
     test_scan_user_message()
     test_input_guardrails_pipeline()
     test_guardrails_obfuscation_and_roleplay()
+    test_infer_turma_count_sql()
     test_output_guardrails_extended()
     test_demonstrate_blocked_attacks()
     test_mask_pii_for_domain()

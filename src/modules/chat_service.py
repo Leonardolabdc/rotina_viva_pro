@@ -525,6 +525,40 @@ def familia_student_query_blocked_message(
     )
 
 
+_ALUNO_COUNT_QUESTION_RE = re.compile(
+    r"(?i)(?:"
+    r"\b(?:quantos|quantas|numero|número|contar|total)\b.*\b(?:alunos?|alunas?|crianças|criancas)\b"
+    r"|"
+    r"\b(?:alunos?|alunas?)\b.*\b(?:quantos|quantas|numero|número|contar|total)\b"
+    r")"
+)
+
+
+def _extract_turma_label_from_message(um: str) -> str | None:
+    """Mapeia 'infantil 2', 'turma 2', etc. para o rótulo do CSV (`Infantil 2`)."""
+    m = re.search(r"(?i)\binfantil\s*([123])\b", um)
+    if m:
+        return f"Infantil {m.group(1)}"
+    m = re.search(r"(?i)\bturma\s+(?:infantil\s*)?([123])\b", um)
+    if m:
+        return f"Infantil {m.group(1)}"
+    return None
+
+
+def _infer_info_alunos_count_sql(um: str) -> str | None:
+    """Contagem no cadastro — total ou filtrada por turma — sem exigir nome de aluno."""
+    if not _ALUNO_COUNT_QUESTION_RE.search(um):
+        return None
+    turma_label = _extract_turma_label_from_message(um)
+    base = "SELECT COUNT(*) AS total FROM info_alunos WHERE TRIM(COALESCE(nome, '')) <> ''"
+    if turma_label:
+        safe = turma_label.replace("'", "''")
+        return f"{base} AND turma = '{safe}'"
+    if re.search(r"(?i)\bturma\b", um):
+        return None
+    return base
+
+
 def infer_structured_select_sql(user_message: str) -> str | None:
     """
     SELECT de recurso quando o planeador devolve `sql` vazio: `info_alunos` e/ou
@@ -533,6 +567,9 @@ def infer_structured_select_sql(user_message: str) -> str | None:
     um = (user_message or "").strip()
     if not um:
         return None
+    count_sql = _infer_info_alunos_count_sql(um)
+    if count_sql:
+        return count_sql
     wants_diario = bool(_DIARIO_READ_KEYWORDS.search(um))
     wants_cadastro = bool(
         re.search(
