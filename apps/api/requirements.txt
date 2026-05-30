@@ -1,0 +1,11 @@
+# FastAPI worker — Rotina Viva Pro
+# Fase 0: stubs + health. Fase 3: lógica em ../../src/
+
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.32.0,<1
+python-multipart>=0.0.12,<1
+pyyaml>=6.0.2,<7
+pydantic>=2.10.0,<3
+
+# Domínio herdado do PoC (instalar a partir da raiz do monorepo)
+-r ../../requirements-prod.txt

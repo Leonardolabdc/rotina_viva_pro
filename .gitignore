@@ -57,6 +57,13 @@ tests/.deepeval/
 # Relatórios gerados localmente
 data/SEGURANCA_ANTES_DEPOIS.md
 
+# Node / monorepo
+node_modules/
+.pnpm-store/
+.turbo/
+apps/web/.next/
+packages/api-contracts/generated/
+
 # Sistema Operacional
 .DS_Store
 Thumbs.db

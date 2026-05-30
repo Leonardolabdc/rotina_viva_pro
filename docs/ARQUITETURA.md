@@ -10,15 +10,20 @@ O Rotina Viva utiliza uma arquitetura baseada em perfis de acesso (RBAC). Educad
 
 | Pasta / ficheiro | Função |
 |------------------|--------|
-| `app.py` | Ponto de entrada Streamlit |
+| `apps/api/` | Worker FastAPI (Fase 3) — stubs + `/health` na Fase 0 |
+| `apps/web/` | Frontend Next.js (Fase 5) — placeholder |
+| `packages/api-contracts/` | OpenAPI 3.1 — contrato HTTP web ↔ API |
+| `app.py` | Ponto de entrada Streamlit (legado até Fase 6) |
 | `src/core/` | Autenticação, base de dados DuckDB, segurança |
 | `src/modules/` | Motor de IA, RAG, CrewAI, serviços de chat e ML de emoções |
-| `src/ui/` | Componentes e estilos da interface |
+| `src/ui/` | Componentes e estilos da interface Streamlit |
 | `data/` | CSVs, PDFs indexados, persistência local |
 | `docker/` | Serviço Whisper (transcrição) |
 | `scripts/` | Utilitários (testes de segurança no Docker) |
 | `tests/` | Avaliação DeepEval e testes unitários |
 | `docs/` | Documentação técnica e CBL |
+
+Monorepo (pnpm + Turbo): [MONOREPO.md](MONOREPO.md).
 
 ## System prompts (resumo)
 

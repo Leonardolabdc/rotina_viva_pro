@@ -1,0 +1,25 @@
+{
+  "name": "rotina-viva-pro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo Rotina Viva — Next.js + FastAPI + contratos OpenAPI",
+  "scripts": {
+    "dev:api": "pnpm --filter @rotina-viva/api dev",
+    "dev:web": "pnpm --filter @rotina-viva/web dev",
+    "contracts:validate": "pnpm --filter @rotina-viva/api-contracts validate",
+    "contracts:generate": "pnpm --filter @rotina-viva/api-contracts generate",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

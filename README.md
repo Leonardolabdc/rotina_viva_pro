@@ -25,7 +25,7 @@ Ordem de execução e estado actual (actualizado conforme o desenvolvimento):
 
 | # | Fase | Estado | Notas |
 |---|------|--------|-------|
-| **0** | Monorepo + contratos API | ⬜ Pendente | Código base copiado do PoC (`src/` Streamlit); estrutura `apps/web` + `apps/api` a criar |
+| **0** | Monorepo + contratos API | ✅ Concluído | `apps/api`, `apps/web`, `packages/api-contracts` — ver [docs/MONOREPO.md](docs/MONOREPO.md) |
 | **1** | Supabase (Postgres + Auth + RLS + Storage + JSONB) | ⬜ Pendente | Substituir DuckDB/CSV e sessões em ficheiro |
 | **2** | pgvector (RAG) | ⬜ Pendente | Substituir ChromaDB em `data/vector_db/` |
 | **3** | FastAPI worker (reutilizar `src/`) | ⬜ Pendente | API Python como fonte da verdade; JWT Supabase |
@@ -246,6 +246,26 @@ Os ramos **Dados**, **Emoções** e **Documentos** só entram se o plano os incl
 **Destaque técnico (PoC):** RBAC por perfil; educadores com escrita nos CSV; famílias com consulta restrita + RAG. Comunicação mediada por guardrails rule-based, validação SQL e anonimização de PII.
 
 Mais detalhes: [docs/ARQUITETURA.md](docs/ARQUITETURA.md) · [docs/CBL.md](docs/CBL.md) · [docs/SYSTEM_PROMPT.md](docs/SYSTEM_PROMPT.md) · [docs/RELATORIO_SEGURANCA_LLM.md](docs/RELATORIO_SEGURANCA_LLM.md)
+
+---
+
+## Monorepo (Fase 0)
+
+```powershell
+# Com pnpm (recomendado)
+pnpm install
+pnpm contracts:validate
+
+# Sem pnpm: validar contrato directamente
+npx @redocly/cli lint packages/api-contracts/openapi.yaml
+
+# API local
+cd apps/api
+pip install -r requirements.txt
+python run_dev.py          # http://localhost:8000/health
+```
+
+Contrato OpenAPI: `packages/api-contracts/openapi.yaml` · guia: [docs/MONOREPO.md](docs/MONOREPO.md)
 
 ---
 

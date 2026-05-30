@@ -1,0 +1,9 @@
+{
+  "name": "@rotina-viva/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scripts npm para o worker FastAPI (Python)",
+  "scripts": {
+    "dev": "python run_dev.py"
+  }
+}
