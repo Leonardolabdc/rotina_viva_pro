@@ -18,15 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements-dev.txt .
+COPY requirements-prod.txt requirements-dev.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements-dev.txt
 
 COPY app.py .
 COPY src/ ./src/
-COPY tests/ ./tests/
-COPY scripts/ ./scripts/
+# tests/ e scripts/ montados em runtime via docker-compose.yml
 
 EXPOSE 8501
 

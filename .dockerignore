@@ -21,6 +21,5 @@ streamlit/secrets.toml
 .vscode
 **/__pycache__
 **/*.pyc
-requirements-dev.txt
 docker-compose*.yml
 vercel.json
