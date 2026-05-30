@@ -4,6 +4,8 @@ API HTTP documentada em `packages/api-contracts/openapi.yaml`.
 
 ## Desenvolvimento local
 
+**Fase 0** (só `/health` e stubs — instalação leve):
+
 ```powershell
 cd apps/api
 python -m venv .venv
@@ -11,6 +13,14 @@ python -m venv .venv
 pip install -r requirements.txt
 python run_dev.py
 ```
+
+**Fase 3+** (worker com lógica `src/` + ML/RAG):
+
+```powershell
+pip install -r requirements-worker.txt
+```
+
+Recomendado: **Python 3.12** (ver `packages.toml` na raiz). Python 3.10 funciona para a Fase 0.
 
 - Swagger UI: http://localhost:8000/docs
 - Health: http://localhost:8000/health
