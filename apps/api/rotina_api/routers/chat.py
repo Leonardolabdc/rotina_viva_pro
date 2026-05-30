@@ -276,6 +276,7 @@ async def stream_chat_message(
         _run,
         stream_api_chat_turn,
         user_message,
+        _verdict_to_api,
     ) = _import_runner()
 
     session = get_session(token, session_id)

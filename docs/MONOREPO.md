@@ -30,6 +30,7 @@ pnpm install
 pnpm contracts:validate
 pnpm contracts:generate
 pnpm dev:api          # FastAPI em :8000
+pnpm dev:web          # Next.js em :3000 (Fase 5)
 ```
 
 Streamlit (legado):
@@ -47,7 +48,7 @@ docker compose up --build -d    # :8501
 | 2 | pgvector RAG | substituir `src/modules/rag_index.py` |
 | 3 | FastAPI completo | `apps/api/rotina_api/` → chama `src/` |
 | 4 | LLM Guard | middleware no worker |
-| 5 | Next.js | `apps/web/` |
+| 5 | Next.js | `apps/web/` — ver [FASE5_NEXTJS.md](FASE5_NEXTJS.md) |
 | 6 | Cutover | desligar `app.py` do deploy |
 
 ## Referências

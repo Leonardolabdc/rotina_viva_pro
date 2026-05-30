@@ -30,7 +30,7 @@ Ordem de execução e estado actual (actualizado conforme o desenvolvimento):
 | **2** | pgvector (RAG) | ✅ Concluído | Migration + `scripts/build_rag_pgvector.py` — guia [docs/FASE2_PGVECTOR.md](docs/FASE2_PGVECTOR.md) |
 | **3** | FastAPI worker (reutilizar `src/`) | ✅ Concluído | Chat sync/SSE, sessões Supabase — guia [docs/FASE3_FASTAPI.md](docs/FASE3_FASTAPI.md) |
 | **4** | LLM Guard no worker | ✅ Concluído | ML + rule-based — guia [docs/FASE4_LLM_GUARD.md](docs/FASE4_LLM_GUARD.md) |
-| **5** | Next.js na Vercel | ⬜ Pendente | UI profissional; chat via SSE para a API |
+| **5** | Next.js na Vercel | ✅ Concluído | Login + chat SSE — guia [docs/FASE5_NEXTJS.md](docs/FASE5_NEXTJS.md) |
 | **6** | Cutover + desligar Streamlit | ⬜ Pendente | Streamlit só local/dev ou removido do deploy |
 
 **Legenda:** ✅ Concluído · 🔄 Em progresso · ⬜ Pendente

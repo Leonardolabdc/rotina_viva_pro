@@ -2,10 +2,27 @@
   "name": "@rotina-viva/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Frontend Next.js — Fase 5 (placeholder)",
+  "description": "Frontend Next.js — Fase 5",
   "scripts": {
-    "dev": "node -e \"console.log('Next.js será inicializado na Fase 5. Contrato: packages/api-contracts/openapi.yaml')\"",
-    "build": "node -e \"console.log('build placeholder — Fase 5')\"",
-    "lint": "node -e \"console.log('lint placeholder — Fase 5')\""
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.8",
+    "@types/node": "^22.15.21",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "eslint": "^9.27.0",
+    "eslint-config-next": "^15.3.3",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3"
   }
 }
