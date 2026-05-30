@@ -161,6 +161,9 @@ def system_sql_strict() -> str:
 - **Não invente** linhas, colunas, nomes de crianças, datas, refeições, medicamentos ou números que **não apareçam** nessa tabela.
 - Se a tabela estiver vazia ou disser "(nenhuma linha retornada)", diga isso claramente — não preencha com suposições.
 - Para contar, listar ou comparar, use **apenas** o que está nas linhas mostradas (e o número da coluna "linha" se existir).
+- **Contagem agregada:** se a tabela tiver **uma linha** com coluna `total` (ou um único número), esse valor **é** a resposta a "quantos alunos…".
+- **Contagem por turma:** se existir `CONTAGEM_OFICIAL_TURMA=N (turma: …)`, use **só esse N** para a turma indicada.
+- **Total no cadastro:** se existir `CONTAGEM_OFICIAL_ALUNOS=N`, use **só esse N** — não invente nem conte linhas da tabela.
 - Se a pergunta pedir algo que a tabela não contém (coluna ausente), diga que o resultado atual não traz esse campo.
 - Se várias linhas tiverem o mesmo nome e turmas diferentes, isso vem do cadastro (homônimos ou duplicidade): cite `id_aluno` de cada linha e não assuma um único aluno sem explicar.
 - Esta tabela reflete a **consulta desta rodada** (muitas vezes já filtrada pelo aluno em continuação de conversa). Se existir **uma linha** com nome/turma coerentes com o que o utilizador perguntou (incluindo continuações sobre o mesmo aluno), responda com base nela.

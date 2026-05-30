@@ -43,8 +43,10 @@ from modules.chat_service import (
     augment_cadastro_question_with_history,
     augment_question_for_parent_rag,
     build_mutation_direct_reply,
+    enrich_duck_block_cadastro_count,
     is_rag_nutrition_meals_scope_question,
     normalize_plan,
+    try_build_cadastro_count_early_reply,
 )
 from modules.rag_index import (
     CHROMA_DIR,
@@ -400,6 +402,12 @@ def prepare_rotina_chat_turn(
             perfil_educador=not allow_delete_mutations
         )
         return ctx
+
+    duck_block = enrich_duck_block_cadastro_count(duck_block, um)
+    if ctx.early_reply is None:
+        _count_reply = try_build_cadastro_count_early_reply(um, duck_block)
+        if _count_reply:
+            ctx.early_reply = _count_reply
 
     ctx.duck_block = duck_block
     ctx.rag_block = rag_block

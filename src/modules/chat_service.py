@@ -559,6 +559,64 @@ def _infer_info_alunos_count_sql(um: str) -> str | None:
     return base
 
 
+def is_cadastro_count_question(user_message: str) -> bool:
+    return bool(_ALUNO_COUNT_QUESTION_RE.search((user_message or "").strip()))
+
+
+def _extract_sql_count_from_duck_block(duck_block: str) -> int | None:
+    """Extrai o valor de COUNT(*) quando a consulta devolve uma linha agregada."""
+    s = duck_block or ""
+    if "(nenhuma linha retornada)" in s:
+        return None
+    m = re.search(r"^\|\s*1\s*\|\s*(\d+)\s*\|", s, re.MULTILINE)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
+def enrich_duck_block_cadastro_count(duck_block: str, user_message: str) -> str:
+    """Anexa linha oficial de contagem para o LLM (e resposta directa) interpretar."""
+    if not is_cadastro_count_question(user_message):
+        return duck_block
+    count = _extract_sql_count_from_duck_block(duck_block)
+    if count is None:
+        return duck_block
+    turma = _extract_turma_label_from_message(user_message)
+    if turma:
+        extra = f"CONTAGEM_OFICIAL_TURMA={count} (turma: {turma})"
+    else:
+        extra = f"CONTAGEM_OFICIAL_ALUNOS={count}"
+    if extra in duck_block:
+        return duck_block
+    return duck_block + "\n\n" + extra
+
+
+def try_build_cadastro_count_early_reply(user_message: str, duck_block: str) -> str | None:
+    """Resposta determinística para contagens — evita o LLM ignorar tabela agregada."""
+    um = (user_message or "").strip()
+    if not is_cadastro_count_question(um):
+        return None
+    turma = _extract_turma_label_from_message(um)
+    if turma:
+        count = _first_re_group(r"CONTAGEM_OFICIAL_TURMA=(\d+)", duck_block)
+        if not count:
+            val = _extract_sql_count_from_duck_block(duck_block)
+            if val is None:
+                return None
+            count = str(val)
+        return f"A turma **{turma}** tem **{count}** alunos no cadastro."
+    count = _first_re_group(r"CONTAGEM_OFICIAL_ALUNOS=(\d+)", duck_block)
+    if not count:
+        val = _extract_sql_count_from_duck_block(duck_block)
+        if val is None:
+            return None
+        count = str(val)
+    return f"Há **{count}** alunos no cadastro."
+
+
 def infer_structured_select_sql(user_message: str) -> str | None:
     """
     SELECT de recurso quando o planeador devolve `sql` vazio: `info_alunos` e/ou
@@ -1005,7 +1063,11 @@ def _processing_status_sql_line(user_text: str, sql: str | None) -> str:
     blob = f"{user_text} {sql or ''}".lower()
     if "alerg" in blob:
         return "CSV — verificando alergias e cadastro de alunos…"
-    if "turma" in blob or ("infantil" in blob and "qual" in blob):
+    if (
+        "turma" in blob
+        or "infantil" in blob
+        or is_cadastro_count_question(user_text)
+    ):
         return "CSV — consultando turmas e cadastro de alunos…"
     if any(
         w in blob

@@ -258,15 +258,25 @@ def test_backup_and_audit() -> None:
 def test_infer_turma_count_sql() -> None:
     from pathlib import Path
 
-    from core.database import open_duckdb_connection
-    from modules.chat_service import infer_structured_select_sql
+    from core.database import open_duckdb_connection, run_safe_select
+    from modules.chat_service import (
+        enrich_duck_block_cadastro_count,
+        infer_structured_select_sql,
+        try_build_cadastro_count_early_reply,
+    )
 
     data_dir = Path(__file__).resolve().parents[1] / "data"
-    sql = infer_structured_select_sql("quantos alunos tem na turma infantil 2")
+    um = "quantas alunas tem no infantil 2"
+    sql = infer_structured_select_sql(um)
     assert sql and "Infantil 2" in sql and "COUNT(*)" in sql.upper()
     conn = open_duckdb_connection(data_dir)
     rows = conn.execute(sql).fetchall()
     assert rows[0][0] == 47
+    block, ok = run_safe_select(conn, sql)
+    assert ok
+    block = enrich_duck_block_cadastro_count(block, um)
+    reply = try_build_cadastro_count_early_reply(um, block)
+    assert reply and "47" in reply and "Infantil 2" in reply
 
     sql2 = infer_structured_select_sql("quantos alunos tem na turma 2")
     assert sql2 and "Infantil 2" in sql2
