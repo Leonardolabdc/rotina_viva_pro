@@ -277,6 +277,7 @@ def test_infer_turma_count_sql() -> None:
     block = enrich_duck_block_cadastro_count(block, um)
     reply = try_build_cadastro_count_early_reply(um, block)
     assert reply and "47" in reply and "Infantil 2" in reply
+    assert "**" not in reply
 
     sql2 = infer_structured_select_sql("quantos alunos tem na turma 2")
     assert sql2 and "Infantil 2" in sql2

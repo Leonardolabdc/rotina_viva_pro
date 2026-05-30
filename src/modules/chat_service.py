@@ -607,14 +607,14 @@ def try_build_cadastro_count_early_reply(user_message: str, duck_block: str) -> 
             if val is None:
                 return None
             count = str(val)
-        return f"A turma **{turma}** tem **{count}** alunos no cadastro."
+        return f"A turma {turma} tem {count} alunos no cadastro."
     count = _first_re_group(r"CONTAGEM_OFICIAL_ALUNOS=(\d+)", duck_block)
     if not count:
         val = _extract_sql_count_from_duck_block(duck_block)
         if val is None:
             return None
         count = str(val)
-    return f"Há **{count}** alunos no cadastro."
+    return f"Há {count} alunos no cadastro."
 
 
 def infer_structured_select_sql(user_message: str) -> str | None:
