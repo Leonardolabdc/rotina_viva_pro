@@ -19,3 +19,4 @@ startCommand = ""
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
+# Volume persistente: Settings → Volumes → mount /data — ver docs/PERSISTENCIA_RAILWAY.md

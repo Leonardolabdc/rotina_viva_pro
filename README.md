@@ -33,6 +33,8 @@ Ordem de execução e estado actual (actualizado conforme o desenvolvimento):
 | **5** | Next.js na Vercel | ✅ Concluído | Login + chat SSE — guia [docs/FASE5_NEXTJS.md](docs/FASE5_NEXTJS.md) |
 | **6** | Cutover + desligar Streamlit | ✅ Concluído | Worker Docker + Vercel — guia [docs/FASE6_CUTOVER.md](docs/FASE6_CUTOVER.md) |
 
+**Pós-cutover:** persistência CSV no Railway — [docs/PERSISTENCIA_RAILWAY.md](docs/PERSISTENCIA_RAILWAY.md)
+
 **Legenda:** ✅ Concluído · 🔄 Em progresso · ⬜ Pendente
 
 ---

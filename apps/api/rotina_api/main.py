@@ -15,6 +15,7 @@ from rotina_api.routers import api, auth, chat, students
 from rotina_api.supabase_settings import supabase_configured, supabase_env_status
 
 _LLM_GUARD_BOOT: dict[str, object] = {}
+_DATA_DIR_BOOT: dict[str, object] = {}
 
 
 def _worker_ready() -> bool:
@@ -29,7 +30,13 @@ def _worker_ready() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _LLM_GUARD_BOOT
+    global _LLM_GUARD_BOOT, _DATA_DIR_BOOT
+    try:
+        from core.data_bootstrap import ensure_persistent_data_dir
+
+        _DATA_DIR_BOOT = ensure_persistent_data_dir()
+    except Exception as exc:
+        _DATA_DIR_BOOT = {"error": str(exc)}
     if _worker_ready():
         try:
             from core.llm_guard_layer import warmup_llm_guard
@@ -97,6 +104,7 @@ async def health() -> dict[str, object]:
         "phase": phase,
         "supabase": "configured" if supabase_configured() else "missing",
         "supabaseEnv": supabase_env_status(),
+        "dataDir": _DATA_DIR_BOOT or None,
         "llmGuard": llm_guard,
     }
 

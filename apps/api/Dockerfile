@@ -39,7 +39,9 @@ COPY src /app/src
 COPY apps/api/rotina_api /app/apps/api/rotina_api
 COPY apps/api/run_prod.py /app/apps/api/run_prod.py
 COPY packages/api-contracts /app/packages/api-contracts
-COPY data /data
+# Seed embutido na imagem; runtime grava em ROTINA_DATA_DIR (/data = volume Railway)
+COPY data /app/seed-data
+ENV ROTINA_SEED_DATA_DIR=/app/seed-data
 
 EXPOSE 8000
 

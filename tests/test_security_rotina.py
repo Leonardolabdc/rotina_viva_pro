@@ -288,6 +288,26 @@ def test_infer_turma_count_sql() -> None:
     print("OK test_infer_turma_count_sql")
 
 
+def test_data_bootstrap_seed() -> None:
+    import tempfile
+    from pathlib import Path
+
+    from core.data_bootstrap import ensure_persistent_data_dir
+
+    repo_data = Path(__file__).resolve().parents[1] / "data"
+    with tempfile.TemporaryDirectory() as tmp:
+        empty = Path(tmp) / "volume"
+        meta = ensure_persistent_data_dir(data_dir=empty, seed_dir=repo_data)
+        assert meta["infoAlunosCsv"] is True
+        assert meta["diarioCsv"] is True
+        assert meta["writable"] is True
+        assert "info_alunos.csv" in meta["seededFiles"]
+        # segunda chamada não repõe por cima
+        meta2 = ensure_persistent_data_dir(data_dir=empty, seed_dir=repo_data)
+        assert meta2["seededFiles"] == []
+    print("OK test_data_bootstrap_seed")
+
+
 def main() -> None:
     test_password_hash_and_verify()
     test_mask_phone_and_duck_block()
@@ -296,6 +316,7 @@ def main() -> None:
     test_input_guardrails_pipeline()
     test_guardrails_obfuscation_and_roleplay()
     test_infer_turma_count_sql()
+    test_data_bootstrap_seed()
     test_output_guardrails_extended()
     test_demonstrate_blocked_attacks()
     test_mask_pii_for_domain()
