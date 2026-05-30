@@ -9,6 +9,7 @@ import re
 import shutil
 import time
 import warnings
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -730,8 +731,13 @@ def rag_will_run_full_document_ingest(persist_dir: Path, data_dir: Path) -> bool
     True se na próxima chamada a `get_chroma_collection` for necessário ingerir PDFs
     (pasta vazia, coleção inexistente ou manifest de PDFs diferente do gravado).
     """
-    persist_dir = persist_dir.resolve()
     data_dir = data_dir.resolve()
+    if rag_backend() == "pgvector":
+        from modules.rag_pgvector import pgvector_needs_reingest
+
+        return pgvector_needs_reingest(data_dir)
+
+    persist_dir = persist_dir.resolve()
     fp_now = _rag_pdf_manifest_fingerprint(data_dir)
     if _read_rag_stored_fingerprint(persist_dir) != fp_now:
         return True
@@ -750,10 +756,17 @@ def get_chroma_collection(
     persist_dir_str: str,
     data_dir_str: str,
     index_profile: str,
-) -> chromadb.Collection:
+) -> chromadb.Collection | PgVectorRagHandle:
     _ = index_profile  # só invalida o cache do Streamlit quando o perfil muda
-    persist_dir = Path(persist_dir_str)
     data_dir = Path(data_dir_str)
+
+    if rag_backend() == "pgvector":
+        from modules.rag_pgvector import ensure_pgvector_index
+
+        ensure_pgvector_index(data_dir)
+        return PgVectorRagHandle(index_profile=index_profile)
+
+    persist_dir = Path(persist_dir_str)
     persist_dir.mkdir(parents=True, exist_ok=True)
 
     fp_now = _rag_pdf_manifest_fingerprint(data_dir)
@@ -786,60 +799,23 @@ def get_chroma_collection(
     return collection
 
 
-def retrieve_rag_context_and_chunks(
-    collection: chromadb.Collection, question: str, k: int | None = None
+def select_rag_chunks_from_candidates(
+    question: str,
+    docs: list[str],
+    metas: list[dict[str, Any]],
+    dists: list[float],
+    k: int | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Retorna o bloco de texto para o LLM e a lista dos trechos (chunks) efetivamente
-    escolhidos após busca + reranking — mesma ordem do contexto enviado ao modelo.
-    """
-    n = collection.count()
-    if n == 0:
-        return (
-            "(Nenhum documento indexado. Coloque os PDFs em ROTINA_DATA_DIR e reinicie o app.)",
-            [],
-        )
+    """Reranking partilhado entre ChromaDB e pgvector."""
     top = k if k is not None else RAG_TOP_K
     top = max(1, top)
-    if ROTINA_RAG_DISTANCE_GAP > 0:
-        fetch_n = min(n, max(top + 4, top * 3, 10))
-    else:
-        fetch_n = min(top, n)
-    if ROTINA_RAG_LEXICAL_WEIGHT > 0:
-        fetch_n = min(n, max(fetch_n, top * 4, 16))
-
-    id_q = is_rag_identity_scope_question(question)
-    nut_q = is_rag_nutrition_meals_scope_question(question)
-    where_scope: dict[str, Any] | None = None
-    # Uma pergunta “pura” por tipo: filtro no Chroma. Pergunta mista (ex.: nome + cardápio) busca em todos.
-    if id_q and not nut_q:
-        where_scope = {"source": {"$in": list(RAG_IDENTITY_SOURCES)}}
-    elif nut_q and not id_q:
-        where_scope = {"source": {"$in": list(RAG_NUTRITION_SOURCES)}}
-
-    def _do_query(
-        w: dict[str, Any] | None,
-    ) -> Any:
-        kw: dict[str, Any] = {
-            "query_texts": [question],
-            "n_results": max(1, fetch_n),
-            "include": ["documents", "metadatas", "distances"],
-        }
-        if w is not None:
-            kw["where"] = w
-        return collection.query(**kw)
-
-    res = _do_query(where_scope)
-    if where_scope is not None:
-        if not (res.get("documents") or [[]])[0]:
-            res = _do_query(None)
-    docs = (res.get("documents") or [[]])[0]
-    metas = (res.get("metadatas") or [[]])[0]
-    dists = (res.get("distances") or [[]])[0]
     selected: list[tuple[str, str, float | None, dict[str, Any]]] = []
 
     if not docs:
         return "(sem trechos relevantes)", []
+
+    id_q = is_rag_identity_scope_question(question)
+    nut_q = is_rag_nutrition_meals_scope_question(question)
 
     w_lex = ROTINA_RAG_LEXICAL_WEIGHT
     if w_lex > 0 and len(docs) == len(dists) and dists:
@@ -891,7 +867,6 @@ def retrieve_rag_context_and_chunks(
     if not selected:
         return "(sem trechos relevantes)", []
 
-    # Pergunta mista (identidade + refeições): trechos do planejamento nutricional primeiro no contexto e na sidebar.
     if id_q and nut_q:
         pref = frozenset(RAG_NUTRITION_SOURCES)
         nut_first = [t for t in selected if t[0] in pref]
@@ -914,6 +889,75 @@ def retrieve_rag_context_and_chunks(
     return rag_block, chunks_ui
 
 
-def retrieve_rag_context(collection: chromadb.Collection, question: str, k: int | None = None) -> str:
+@dataclass(frozen=True)
+class PgVectorRagHandle:
+    """Marcador quando ROTINA_RAG_BACKEND=pgvector (substitui coleção Chroma)."""
+
+    index_profile: str
+
+
+def rag_backend() -> str:
+    return os.getenv("ROTINA_RAG_BACKEND", "chroma").strip().lower()
+
+
+def retrieve_rag_context_and_chunks(
+    collection: chromadb.Collection | PgVectorRagHandle, question: str, k: int | None = None
+) -> tuple[str, list[dict[str, Any]]]:
+    """
+    Retorna o bloco de texto para o LLM e a lista dos trechos (chunks) efetivamente
+    escolhidos após busca + reranking — mesma ordem do contexto enviado ao modelo.
+    """
+    if isinstance(collection, PgVectorRagHandle):
+        from modules.rag_pgvector import retrieve_rag_context_and_chunks_pg
+
+        return retrieve_rag_context_and_chunks_pg(question, k=k)
+
+    n = collection.count()
+    if n == 0:
+        return (
+            "(Nenhum documento indexado. Coloque os PDFs em ROTINA_DATA_DIR e reinicie o app.)",
+            [],
+        )
+    top = k if k is not None else RAG_TOP_K
+    top = max(1, top)
+    if ROTINA_RAG_DISTANCE_GAP > 0:
+        fetch_n = min(n, max(top + 4, top * 3, 10))
+    else:
+        fetch_n = min(top, n)
+    if ROTINA_RAG_LEXICAL_WEIGHT > 0:
+        fetch_n = min(n, max(fetch_n, top * 4, 16))
+
+    id_q = is_rag_identity_scope_question(question)
+    nut_q = is_rag_nutrition_meals_scope_question(question)
+    where_scope: dict[str, Any] | None = None
+    # Uma pergunta “pura” por tipo: filtro no Chroma. Pergunta mista (ex.: nome + cardápio) busca em todos.
+    if id_q and not nut_q:
+        where_scope = {"source": {"$in": list(RAG_IDENTITY_SOURCES)}}
+    elif nut_q and not id_q:
+        where_scope = {"source": {"$in": list(RAG_NUTRITION_SOURCES)}}
+
+    def _do_query(
+        w: dict[str, Any] | None,
+    ) -> Any:
+        kw: dict[str, Any] = {
+            "query_texts": [question],
+            "n_results": max(1, fetch_n),
+            "include": ["documents", "metadatas", "distances"],
+        }
+        if w is not None:
+            kw["where"] = w
+        return collection.query(**kw)
+
+    res = _do_query(where_scope)
+    if where_scope is not None:
+        if not (res.get("documents") or [[]])[0]:
+            res = _do_query(None)
+    docs = (res.get("documents") or [[]])[0]
+    metas = (res.get("metadatas") or [[]])[0]
+    dists = (res.get("distances") or [[]])[0]
+    return select_rag_chunks_from_candidates(question, docs, metas, dists, k=k)
+
+
+def retrieve_rag_context(collection: chromadb.Collection | PgVectorRagHandle, question: str, k: int | None = None) -> str:
     block, _ = retrieve_rag_context_and_chunks(collection, question, k=k)
     return block
