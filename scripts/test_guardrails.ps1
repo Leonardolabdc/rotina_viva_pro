@@ -1,9 +1,11 @@
 # Teste de guardrails na API (Fase 4)
-# Uso: .\scripts\test_guardrails.ps1
-# Requer API a correr com requirements-worker.txt
+# Uso:
+#   .\scripts\test_guardrails.ps1
+#   $env:ROTINA_API_URL = "https://rotina-vivaapi-production.up.railway.app"; .\scripts\test_guardrails.ps1
 
 $ErrorActionPreference = "Stop"
-$base = "http://127.0.0.1:8000"
+$base = if ($env:ROTINA_API_URL) { $env:ROTINA_API_URL.TrimEnd("/") } else { "http://127.0.0.1:8000" }
+Write-Host "API: $base" -ForegroundColor Gray
 
 Write-Host "1. Health + LLM Guard..." -ForegroundColor Cyan
 try {
@@ -32,6 +34,9 @@ $ok = Invoke-RestMethod -Uri "$base/chat/sessions/$($session.id)/messages" -Meth
     -Headers $headers -ContentType "application/json" `
     -Body (@{ content = "Quantos alunos temos?" } | ConvertTo-Json) -TimeoutSec 180
 Write-Host "   OK - guardrail engine: $($ok.guardrail.engine)" -ForegroundColor Green
+if ($ok.guardrail.audit) {
+    Write-Host "   audit: $($ok.guardrail.audit | ConvertTo-Json -Compress)" -ForegroundColor Gray
+}
 
 Write-Host "5. Prompt injection (deve bloquear 422)..." -ForegroundColor Cyan
 $blocked = $false

@@ -39,6 +39,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   createdAt?: string;
+  guardrail?: GuardrailVerdict | null;
 }
 
 export interface ChatSession {
@@ -57,6 +58,21 @@ export interface GuardrailVerdict {
   riskScore?: number;
   engine?: string;
   message?: string;
+  audit?: { scores?: Record<string, number> };
+}
+
+export interface LlmGuardHealth {
+  enabled?: boolean;
+  available?: boolean;
+  active?: boolean;
+  inputScanners?: string[];
+  outputScanners?: string[];
+}
+
+export interface HealthResponse {
+  status?: string;
+  phase?: string;
+  llmGuard?: LlmGuardHealth;
 }
 
 export interface ApiErrorBody {
@@ -66,6 +82,10 @@ export interface ApiErrorBody {
   stage?: string;
   used?: number;
   limit?: number;
+  engine?: string;
+  scanner?: string;
+  riskScore?: number;
+  allowed?: boolean;
 }
 
 export class ApiError extends Error {
@@ -130,6 +150,10 @@ export async function getCurrentUser(token: string): Promise<UserProfile> {
   return apiFetch<UserProfile>("/auth/me", {}, token);
 }
 
+export async function getHealth(): Promise<HealthResponse> {
+  return apiFetch<HealthResponse>("/health");
+}
+
 export async function createChatSession(token: string): Promise<ChatSession> {
   return apiFetch<ChatSession>(
     "/chat/sessions",
@@ -148,8 +172,39 @@ export async function getChatSession(token: string, sessionId: string): Promise<
 export interface StreamHandlers {
   onStatus?: (phase: string, detail?: string) => void;
   onToken?: (text: string) => void;
-  onDone?: (content: string) => void;
-  onError?: (error: ApiError) => void;
+  onDone?: (content: string, guardrail?: GuardrailVerdict | null) => void;
+  onError?: (error: ApiError, guardrail?: GuardrailVerdict | null) => void;
+}
+
+function parseGuardrailFromPayload(data: Record<string, unknown>): GuardrailVerdict | null {
+  const g = data.guardrail;
+  if (!g || typeof g !== "object") return null;
+  const o = g as Record<string, unknown>;
+  return {
+    allowed: Boolean(o.allowed ?? true),
+    stage: (o.stage === "input" ? "input" : "output") as "input" | "output",
+    reason: o.reason ? String(o.reason) : undefined,
+    scanner: o.scanner ? String(o.scanner) : undefined,
+    riskScore: typeof o.riskScore === "number" ? o.riskScore : undefined,
+    engine: o.engine ? String(o.engine) : undefined,
+    message: o.message ? String(o.message) : undefined,
+    audit:
+      o.audit && typeof o.audit === "object"
+        ? (o.audit as GuardrailVerdict["audit"])
+        : undefined,
+  };
+}
+
+function guardrailFromErrorPayload(data: Record<string, unknown>): GuardrailVerdict | null {
+  if (!data.engine && !data.scanner && data.allowed !== false) return null;
+  return {
+    allowed: false,
+    stage: data.stage === "output" ? "output" : "input",
+    scanner: data.scanner ? String(data.scanner) : undefined,
+    riskScore: typeof data.riskScore === "number" ? data.riskScore : undefined,
+    engine: data.engine ? String(data.engine) : undefined,
+    message: data.message ? String(data.message) : undefined,
+  };
 }
 
 export async function streamChatMessage(
@@ -206,15 +261,21 @@ export async function streamChatMessage(
     } else if (event === "token") {
       handlers.onToken?.(String(data.text || ""));
     } else if (event === "done") {
-      handlers.onDone?.(String(data.content || ""));
+      handlers.onDone?.(String(data.content || ""), parseGuardrailFromPayload(data));
     } else if (event === "error") {
+      const body: ApiErrorBody = {
+        message: String(data.message || "Erro no stream"),
+        stage: data.stage ? String(data.stage) : undefined,
+        used: typeof data.used === "number" ? data.used : undefined,
+        limit: typeof data.limit === "number" ? data.limit : undefined,
+        engine: data.engine ? String(data.engine) : undefined,
+        scanner: data.scanner ? String(data.scanner) : undefined,
+        riskScore: typeof data.riskScore === "number" ? data.riskScore : undefined,
+        allowed: data.allowed === false ? false : undefined,
+      };
       handlers.onError?.(
-        new ApiError(Number(data.code) || 500, {
-          message: String(data.message || "Erro no stream"),
-          stage: data.stage ? String(data.stage) : undefined,
-          used: typeof data.used === "number" ? data.used : undefined,
-          limit: typeof data.limit === "number" ? data.limit : undefined,
-        }),
+        new ApiError(Number(data.code) || 500, body),
+        guardrailFromErrorPayload(data),
       );
     }
   };

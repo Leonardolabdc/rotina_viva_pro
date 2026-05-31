@@ -334,12 +334,18 @@ async def stream_chat_message(
                 predictive_ml_enabled=pred,
             )
         except GuardrailBlockedError as exc:
+            v = exc.verdict
             yield _sse_line(
                 "error",
                 {
                     "code": 422,
-                    "stage": "input",
-                    "message": exc.verdict.user_message or "Mensagem bloqueada.",
+                    "stage": v.stage or "input",
+                    "message": v.user_message or "Mensagem bloqueada.",
+                    "allowed": False,
+                    "engine": v.engine,
+                    "scanner": v.scanner,
+                    "riskScore": v.risk_score,
+                    "audit": v.audit,
                 },
             )
         except QuotaExceededError as exc:

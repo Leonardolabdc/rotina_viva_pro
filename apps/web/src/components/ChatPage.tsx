@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChatInput } from "@/components/ChatInput";
+import { GuardrailBadge, LlmGuardStatusBanner } from "@/components/GuardrailBadge";
 import { MessageBubble, StreamingBubble } from "@/components/MessageBubble";
 import {
   ApiError,
   ChatMessage,
+  GuardrailVerdict,
   createChatSession,
   getChatSession,
+  getHealth,
   roleLabel,
   statusLabel,
   streamChatMessage,
@@ -28,9 +31,31 @@ export function ChatPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockGuardrail, setBlockGuardrail] = useState<GuardrailVerdict | null>(null);
+  const [llmGuardActive, setLlmGuardActive] = useState(false);
+  const [llmGuardScanners, setLlmGuardScanners] = useState<{
+    input: string[];
+    output: string[];
+  }>({ input: [], output: [] });
   const [booting, setBooting] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    getHealth()
+      .then((h) => {
+        if (h.llmGuard?.active) {
+          setLlmGuardActive(true);
+          setLlmGuardScanners({
+            input: h.llmGuard.inputScanners || [],
+            output: h.llmGuard.outputScanners || [],
+          });
+        }
+      })
+      .catch(() => {
+        /* API offline ou CORS — banner omitido */
+      });
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -40,7 +65,7 @@ export function ChatPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streaming, status]);
+  }, [messages, streaming, status, error, blockGuardrail]);
 
   useEffect(() => {
     if (!token) return;
@@ -96,6 +121,7 @@ export function ChatPage() {
       if (!token || !sessionId || busy) return;
 
       setError(null);
+      setBlockGuardrail(null);
       setBusy(true);
       setStreaming("");
       setStatus("A enviar…");
@@ -121,17 +147,19 @@ export function ChatPage() {
               setStreaming(draft);
               setStatus(null);
             },
-            onDone: (finalContent) => {
+            onDone: (finalContent, guardrail) => {
               const assistant: ChatMessage = {
                 role: "assistant",
                 content: finalContent || draft,
+                guardrail: guardrail ?? undefined,
               };
               setMessages((prev) => [...prev, assistant]);
               setStreaming("");
               setStatus(null);
             },
-            onError: (streamErr) => {
+            onError: (streamErr, guardrail) => {
               setError(streamErr.message);
+              setBlockGuardrail(guardrail ?? null);
               setStreaming("");
               setStatus(null);
             },
@@ -142,6 +170,16 @@ export function ChatPage() {
         if ((err as Error).name === "AbortError") return;
         if (err instanceof ApiError) {
           setError(err.message);
+          if (err.status === 422 && err.body.engine) {
+            setBlockGuardrail({
+              allowed: false,
+              stage: err.body.stage === "output" ? "output" : "input",
+              engine: err.body.engine,
+              scanner: err.body.scanner,
+              riskScore: err.body.riskScore,
+              message: err.message,
+            });
+          }
         } else if (err instanceof Error && err.message) {
           setError(err.message);
         } else {
@@ -214,6 +252,12 @@ export function ChatPage() {
         </div>
       </header>
 
+      <LlmGuardStatusBanner
+        active={llmGuardActive}
+        inputScanners={llmGuardScanners.input}
+        outputScanners={llmGuardScanners.output}
+      />
+
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
         {booting ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted">
@@ -234,9 +278,12 @@ export function ChatPage() {
               <p className="text-center text-xs text-muted animate-pulse-dot">{status}</p>
             ) : null}
             {error ? (
-              <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {error}
-              </p>
+              <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+                <p>{error}</p>
+                {blockGuardrail ? (
+                  <GuardrailBadge guardrail={blockGuardrail} variant="blocked" />
+                ) : null}
+              </div>
             ) : null}
             <div ref={bottomRef} />
           </div>
