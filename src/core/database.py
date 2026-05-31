@@ -1261,8 +1261,14 @@ def run_safe_select(conn: duckdb.DuckDBPyConnection, sql: str) -> tuple[str, boo
 
         if supabase_structured_ready():
             return run_safe_select_postgres(sql)
-    except Exception:
-        pass
+    except Exception as exc:
+        try:
+            from core.postgres_structured import supabase_structured_ready as _ready
+
+            if _ready():
+                return f"Erro ao executar SQL (Supabase): {exc}", False
+        except Exception:
+            pass
     if not validate_sql(sql):
         return "Consulta SQL rejeitada (apenas SELECT nas tabelas permitidas).", False
     try:

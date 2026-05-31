@@ -203,6 +203,8 @@ def _user_natural_language_cadastro_mutation_intent(user_message: str) -> bool:
 
 
 def _should_force_structured_sources_no_rag(plan: dict[str, Any], user_message: str) -> bool:
+    if is_cadastro_count_question(user_message):
+        return True
     if _plan_mutacao_targets_csv_tables(plan):
         return True
     return _user_natural_language_cadastro_mutation_intent(user_message)
@@ -553,7 +555,7 @@ def _infer_info_alunos_count_sql(um: str) -> str | None:
     base = "SELECT COUNT(*) AS total FROM info_alunos WHERE TRIM(COALESCE(nome, '')) <> ''"
     if turma_label:
         safe = turma_label.replace("'", "''")
-        return f"{base} AND turma = '{safe}'"
+        return f"{base} AND TRIM(turma) ILIKE TRIM('{safe}')"
     if re.search(r"(?i)\bturma\b", um):
         return None
     return base
@@ -568,13 +570,19 @@ def _extract_sql_count_from_duck_block(duck_block: str) -> int | None:
     s = duck_block or ""
     if "(nenhuma linha retornada)" in s:
         return None
-    m = re.search(r"^\|\s*1\s*\|\s*(\d+)\s*\|", s, re.MULTILINE)
-    if not m:
-        return None
-    try:
-        return int(m.group(1))
-    except ValueError:
-        return None
+    for pat in (
+        r"^\|\s*1\s*\|\s*(\d+)\s*\|",
+        r"^\|\s*1\s*\|\s*(\d+(?:\.\d+)?)\s*\|",
+        r"CONTAGEM_OFICIAL_TURMA=(\d+)",
+        r"CONTAGEM_OFICIAL_ALUNOS=(\d+)",
+    ):
+        m = re.search(pat, s, re.MULTILINE)
+        if m:
+            try:
+                return int(float(m.group(1)))
+            except ValueError:
+                continue
+    return None
 
 
 def enrich_duck_block_cadastro_count(duck_block: str, user_message: str) -> str:
@@ -627,6 +635,34 @@ def try_build_cadastro_count_early_reply(user_message: str, duck_block: str) -> 
             return None
         count = str(val)
     return f"Há {count} alunos no cadastro."
+
+
+def resolve_cadastro_count_turn(conn: Any, user_message: str) -> tuple[str | None, str]:
+    """
+    Resposta directa para perguntas de contagem (total ou por turma).
+    Evita depender do LLM quando o SELECT agregado já devolve o número.
+    """
+    um = (user_message or "").strip()
+    if not is_cadastro_count_question(um):
+        return None, ""
+    sql = _infer_info_alunos_count_sql(um)
+    if not sql:
+        return None, ""
+    from core.database import run_safe_select
+
+    block, ok = run_safe_select(conn, sql)
+    block = enrich_duck_block_cadastro_count(block, um)
+    reply = try_build_cadastro_count_early_reply(um, block)
+    if reply:
+        return reply, block
+    if not ok:
+        return (
+            "Não consegui consultar o cadastro agora. "
+            "Confirme a migration `20260531120000_csv_compat_views.sql` no Supabase.\n\n"
+            f"Detalhe: {(block or '')[:500]}",
+            block,
+        )
+    return None, block
 
 
 def infer_structured_select_sql(user_message: str) -> str | None:

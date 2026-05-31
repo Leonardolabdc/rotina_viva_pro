@@ -43,6 +43,9 @@ from modules.chat_service import (
     augment_question_for_parent_rag,
     build_mutation_direct_reply,
     enrich_duck_block_cadastro_count,
+    is_cadastro_count_question,
+    resolve_cadastro_count_turn,
+    _infer_info_alunos_count_sql,
     is_rag_nutrition_meals_scope_question,
     normalize_plan,
     try_build_cadastro_count_early_reply,
@@ -158,6 +161,15 @@ def prepare_rotina_chat_turn(
             "`DATABASE_URL` (Supabase) ou CSVs em `ROTINA_DATA_DIR`.\n\n"
             f"_(detalhe técnico: {e})_"
         )
+        return ctx
+
+    _count_reply, _count_block = resolve_cadastro_count_turn(ctx.conn, um)
+    if _count_reply:
+        ctx.early_reply = _count_reply
+        ctx.duck_block = _count_block
+        _count_sql = _infer_info_alunos_count_sql(um) if is_cadastro_count_question(um) else None
+        if _count_sql:
+            ctx.processing_status = _processing_status_sql_line(um, _count_sql)
         return ctx
 
     collection = None

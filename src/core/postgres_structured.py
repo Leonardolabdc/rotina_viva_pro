@@ -70,6 +70,23 @@ def supabase_structured_ready() -> bool:
     return structured_data_backend() == "supabase" and postgres_configured()
 
 
+def supabase_structured_probe() -> dict[str, object]:
+    """Testa SELECT na view info_alunos (health / diagnóstico)."""
+    if not supabase_structured_ready():
+        return {"ok": False, "reason": "not_configured"}
+    try:
+        conn = open_postgres_structured_connection()
+        cur = conn.execute(
+            "SELECT COUNT(*) AS total FROM info_alunos "
+            "WHERE TRIM(COALESCE(nome, '')) <> ''"
+        )
+        row = cur.fetchone()
+        total = int(row[0]) if row else 0
+        return {"ok": True, "studentsWithName": total}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def _get_pg_connection() -> Any:
     global _pg_conn
     url = postgres_database_url()
@@ -81,7 +98,8 @@ def _get_pg_connection() -> Any:
     import psycopg
 
     if _pg_conn is None or getattr(_pg_conn, "closed", False):
-        _pg_conn = psycopg.connect(url, autocommit=True)
+        # Pooler Supabase (6543): prepared statements desactivados (ver docs Supabase).
+        _pg_conn = psycopg.connect(url, autocommit=True, prepare_threshold=0)
     return _pg_conn
 
 

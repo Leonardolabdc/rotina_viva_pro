@@ -103,6 +103,7 @@ async def health() -> dict[str, object]:
         from core.postgres_structured import (
             postgres_configured,
             structured_data_backend,
+            supabase_structured_probe,
             supabase_structured_ready,
         )
 
@@ -111,6 +112,8 @@ async def health() -> dict[str, object]:
             "postgresConfigured": postgres_configured(),
             "ready": supabase_structured_ready(),
         }
+        if supabase_structured_ready():
+            structured["probe"] = supabase_structured_probe()
     except Exception as exc:
         structured = {"error": str(exc)}
     return {
