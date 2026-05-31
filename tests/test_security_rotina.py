@@ -308,6 +308,24 @@ def test_data_bootstrap_seed() -> None:
     print("OK test_data_bootstrap_seed")
 
 
+def test_structured_data_backend_default_csv() -> None:
+    import os
+
+    from core.postgres_structured import structured_data_backend, supabase_structured_ready
+
+    prev = os.environ.pop("ROTINA_DATA_BACKEND", None)
+    prev_db = os.environ.pop("DATABASE_URL", None)
+    try:
+        assert structured_data_backend() == "csv"
+        assert supabase_structured_ready() is False
+    finally:
+        if prev is not None:
+            os.environ["ROTINA_DATA_BACKEND"] = prev
+        if prev_db is not None:
+            os.environ["DATABASE_URL"] = prev_db
+    print("OK test_structured_data_backend_default_csv")
+
+
 def main() -> None:
     test_password_hash_and_verify()
     test_mask_phone_and_duck_block()
@@ -317,6 +335,7 @@ def main() -> None:
     test_guardrails_obfuscation_and_roleplay()
     test_infer_turma_count_sql()
     test_data_bootstrap_seed()
+    test_structured_data_backend_default_csv()
     test_output_guardrails_extended()
     test_demonstrate_blocked_attacks()
     test_mask_pii_for_domain()

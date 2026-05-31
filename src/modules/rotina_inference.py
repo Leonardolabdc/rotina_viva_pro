@@ -18,12 +18,11 @@ import duckdb
 from core.auth_manager import _planner_suffix_gestao
 from core.database import (
     DATA_DIR,
-    _duckdb_csv_reload_token,
     _mensagem_csv_aberto_simples,
-    get_duckdb_connection,
-    open_duckdb_connection,
+    open_structured_data_connection,
     post_mutation_verification_block,
     promote_plan_sql_mutation_field,
+    reload_structured_data_connection,
     run_mutation_and_persist,
     run_safe_select,
     validate_mutation_sql,
@@ -88,18 +87,12 @@ def _mutation_confirm_message(mut_sql: str, reason: str) -> str:
 
 
 def _open_inference_duckdb():
-    """DuckDB para worker/API (sem cache Streamlit)."""
-    try:
-        return open_duckdb_connection(DATA_DIR)
-    except Exception:
-        return get_duckdb_connection(str(DATA_DIR), _duckdb_csv_reload_token(DATA_DIR))
+    """Cadastro/diário: Supabase ou DuckDB conforme ROTINA_DATA_BACKEND."""
+    return open_structured_data_connection(DATA_DIR)
 
 
 def _reload_inference_duckdb():
-    try:
-        return open_duckdb_connection(DATA_DIR)
-    except Exception:
-        return get_duckdb_connection(str(DATA_DIR), _duckdb_csv_reload_token(DATA_DIR))
+    return reload_structured_data_connection(DATA_DIR)
 
 
 @dataclass
@@ -161,7 +154,8 @@ def prepare_rotina_chat_turn(
         ctx.conn = _open_inference_duckdb()
     except Exception as e:
         ctx.early_reply = (
-            "DuckDB indisponível. Verifique os CSVs em `ROTINA_DATA_DIR` e se não há erro de caminho.\n\n"
+            "Dados estruturados indisponíveis. Verifique `ROTINA_DATA_BACKEND`, "
+            "`DATABASE_URL` (Supabase) ou CSVs em `ROTINA_DATA_DIR`.\n\n"
             f"_(detalhe técnico: {e})_"
         )
         return ctx

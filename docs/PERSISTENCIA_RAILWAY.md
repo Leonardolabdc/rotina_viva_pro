@@ -1,5 +1,7 @@
 # Persistência de dados (CSV) — Railway
 
+> **Recomendado para produção:** migrar cadastro/diário para Supabase — ver [FASE7_SUPABASE_DADOS.md](FASE7_SUPABASE_DADOS.md). O volume abaixo é alternativa/legado enquanto `ROTINA_DATA_BACKEND=csv`.
+
 Por defeito, o disco do contentor Railway é **efémero**: cada redeploy repõe a imagem Docker e **apaga** alterações feitas via chat (INSERT/UPDATE/DELETE nos CSV).
 
 Este guia activa um **Volume Railway** em `/data` para persistir:

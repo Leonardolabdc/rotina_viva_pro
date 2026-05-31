@@ -1128,7 +1128,14 @@ def run_mutation_and_persist(
             dup_warn,
         )
     backup_path: Path | None = None
-    if not skip_backup:
+    use_supabase = False
+    try:
+        from core.postgres_structured import supabase_structured_ready
+
+        use_supabase = supabase_structured_ready()
+    except Exception:
+        use_supabase = False
+    if not skip_backup and not use_supabase:
         try:
             from core.security import append_mutation_audit, backup_csv_tables_before_mutation
 
@@ -1136,9 +1143,15 @@ def run_mutation_and_persist(
         except Exception:
             backup_path = None
     try:
-        conn.execute(sql)
-        persist_duckdb_tables_to_csv(conn, data_dir)
-        msg = "Alteração aplicada e CSVs atualizados."
+        if use_supabase:
+            from core.postgres_structured import open_postgres_structured_connection
+
+            open_postgres_structured_connection().execute(sql)
+            msg = "Alteração aplicada no Supabase (students / diary_entries)."
+        else:
+            conn.execute(sql)
+            persist_duckdb_tables_to_csv(conn, data_dir)
+            msg = "Alteração aplicada e CSVs atualizados."
         if backup_path is not None:
             msg += f"\n\n_Backup automático:_ `{backup_path.name}` em `{data_dir.name}/{backup_path.parent.name}/`."
         try:
@@ -1243,6 +1256,13 @@ def _official_info_alunos_count_block(conn: duckdb.DuckDBPyConnection) -> str | 
 
 
 def run_safe_select(conn: duckdb.DuckDBPyConnection, sql: str) -> tuple[str, bool]:
+    try:
+        from core.postgres_structured import supabase_structured_ready, run_safe_select_postgres
+
+        if supabase_structured_ready():
+            return run_safe_select_postgres(sql)
+    except Exception:
+        pass
     if not validate_sql(sql):
         return "Consulta SQL rejeitada (apenas SELECT nas tabelas permitidas).", False
     try:
@@ -1314,6 +1334,42 @@ def get_duckdb_connection(data_dir_str: str, _csv_token: str) -> duckdb.DuckDBPy
 def open_duckdb_connection(data_dir: Path | str) -> duckdb.DuckDBPyConnection:
     """Abre DuckDB em memória a partir dos CSVs — sem cache Streamlit (FastAPI worker)."""
     return _build_duckdb_connection(Path(data_dir))
+
+
+def open_structured_data_connection(data_dir: Path | str | None = None) -> Any:
+    """
+    Cadastro + diário: Supabase (Postgres) ou DuckDB/CSV conforme ROTINA_DATA_BACKEND.
+    """
+    try:
+        from core.postgres_structured import open_postgres_structured_connection, supabase_structured_ready
+
+        if supabase_structured_ready():
+            return open_postgres_structured_connection()
+    except Exception:
+        pass
+    return open_duckdb_connection(data_dir or DATA_DIR)
+
+
+def reload_structured_data_connection(data_dir: Path | str | None = None) -> Any:
+    """Recarrega conexão após mutação (CSV recarrega ficheiros; Postgres reinicia pool)."""
+    base = Path(data_dir or DATA_DIR)
+    try:
+        from core.postgres_structured import reset_postgres_connection, supabase_structured_ready
+
+        if supabase_structured_ready():
+            reset_postgres_connection()
+            return open_structured_data_connection(base)
+    except Exception:
+        pass
+    try:
+        import streamlit as st
+
+        if hasattr(st, "session_state"):
+            get_duckdb_connection.clear()
+            return get_duckdb_connection(str(base), _duckdb_csv_reload_token(base))
+    except Exception:
+        pass
+    return open_duckdb_connection(base)
 
 
 def _build_duckdb_connection(data_dir: Path) -> duckdb.DuckDBPyConnection:

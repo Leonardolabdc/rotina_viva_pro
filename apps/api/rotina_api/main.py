@@ -98,6 +98,21 @@ async def health() -> dict[str, object]:
             llm_guard = {"enabled": False, "available": False, "active": False, "error": str(exc)}
     if llm_guard.get("active"):
         phase = "4-llm-guard"
+    structured: dict[str, object] = {}
+    try:
+        from core.postgres_structured import (
+            postgres_configured,
+            structured_data_backend,
+            supabase_structured_ready,
+        )
+
+        structured = {
+            "backend": structured_data_backend(),
+            "postgresConfigured": postgres_configured(),
+            "ready": supabase_structured_ready(),
+        }
+    except Exception as exc:
+        structured = {"error": str(exc)}
     return {
         "status": "ok",
         "version": API_VERSION,
@@ -105,6 +120,7 @@ async def health() -> dict[str, object]:
         "supabase": "configured" if supabase_configured() else "missing",
         "supabaseEnv": supabase_env_status(),
         "dataDir": _DATA_DIR_BOOT or None,
+        "structuredData": structured,
         "llmGuard": llm_guard,
     }
 
