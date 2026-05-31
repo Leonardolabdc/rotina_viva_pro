@@ -302,6 +302,7 @@ async def stream_chat_message(
         raise HTTPException(status_code=403, detail={"error": "forbidden", "message": str(exc)}) from exc
 
     def event_generator():
+        yield _sse_line("status", {"phase": "guardrails"})
         try:
             final_content = ""
             rag_chunks: list[dict[str, Any]] = []
@@ -355,27 +356,5 @@ async def stream_chat_message(
             )
         except Exception as exc:
             yield _sse_line("error", {"code": 500, "message": str(exc)})
-
-    try:
-        from core.database import DATA_DIR
-        from core.guardrails import run_input_guardrails
-        from core.security import check_llm_message_quota
-        from modules.api_chat_runner import GuardrailBlockedError, QuotaExceededError
-
-        recent = [
-            str(m.get("content") or "")
-            for m in history
-            if m.get("role") == "user" and (m.get("content") or "").strip()
-        ]
-        verdict = run_input_guardrails(body.content, role=user.role, recent_user_messages=recent)
-        if not verdict.allowed:
-            raise GuardrailBlockedError(verdict)
-        ok, used, limit = check_llm_message_quota(user.username, DATA_DIR)
-        if not ok:
-            raise QuotaExceededError(used, limit)
-    except GuardrailBlockedError as exc:
-        raise _handle_guardrail(exc) from exc
-    except QuotaExceededError as exc:
-        raise _handle_quota(exc) from exc
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

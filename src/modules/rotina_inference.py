@@ -69,9 +69,18 @@ def _env_truthy(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
-def _finalize_assistant_reply(text: str, duck_block: str = "") -> tuple[str, GuardrailVerdict]:
+def _finalize_assistant_reply(
+    text: str,
+    duck_block: str = "",
+    *,
+    skip_llm_guard: bool = False,
+) -> tuple[str, GuardrailVerdict]:
     """Aplica pipeline de saída (guardrails + PII + LLM Guard opcional)."""
-    return run_output_guardrails(text or "", duck_block=duck_block or "")
+    return run_output_guardrails(
+        text or "",
+        duck_block=duck_block or "",
+        skip_llm_guard=skip_llm_guard,
+    )
 
 
 def _mutation_confirm_message(mut_sql: str, reason: str) -> str:
@@ -438,7 +447,11 @@ def prepare_rotina_chat_turn(
 
 def complete_rotina_chat_sync(ctx: ChatTurnContext) -> tuple[str, GuardrailVerdict | None]:
     if ctx.early_reply is not None:
-        content, verdict = _finalize_assistant_reply(ctx.early_reply, ctx.duck_block or "")
+        content, verdict = _finalize_assistant_reply(
+            ctx.early_reply,
+            ctx.duck_block or "",
+            skip_llm_guard=True,
+        )
         return content, verdict
 
     _crew_ok = False
@@ -562,7 +575,11 @@ def stream_rotina_chat_events(
         raw_parts.append(token)
         yield {"event": "token", "data": {"text": token}}
 
-    content, output_guardrail = _finalize_assistant_reply("".join(raw_parts).strip(), ctx.duck_block)
+    content, output_guardrail = _finalize_assistant_reply(
+        "".join(raw_parts).strip(),
+        ctx.duck_block,
+        skip_llm_guard=ctx.early_reply is not None,
+    )
     yield {
         "event": "done",
         "data": {

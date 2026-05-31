@@ -308,6 +308,8 @@ export function roleLabel(role: RotinaRole): string {
 
 export function statusLabel(phase: string): string {
   switch (phase) {
+    case "guardrails":
+      return "A verificar segurança (LLM Guard)…";
     case "planning":
       return "A planear resposta…";
     case "sql":

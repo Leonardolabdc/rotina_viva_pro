@@ -501,7 +501,30 @@ def run_input_guardrails(
                 ),
             )
 
+    if _is_trusted_structured_query(text):
+        return GuardrailVerdict(allowed=True, stage="input", engine="rule-based")
+
     return _apply_llm_guard_input(text, GuardrailVerdict(allowed=True, stage="input"))
+
+
+def _is_trusted_structured_query(text: str) -> bool:
+    """
+    Perguntas de cadastro/diário com padrão legítimo — rule-based basta na entrada;
+    evita scan ML duplicado/lento (contagens, alergias) com LLM Guard activo.
+    """
+    um = (text or "").strip()
+    if not um:
+        return False
+    try:
+        from modules.chat_service import is_cadastro_count_question
+
+        if is_cadastro_count_question(um):
+            return True
+    except Exception:
+        pass
+    if re.search(r"(?i)\balerg", um) and len(um) < 280:
+        return True
+    return False
 
 
 def mask_pii_for_domain(text: str) -> str:
@@ -559,6 +582,7 @@ def run_output_guardrails(
     *,
     role: str | None = None,
     duck_block: str = "",
+    skip_llm_guard: bool = False,
 ) -> tuple[str, GuardrailVerdict]:
     """
     Pipeline de saída. Devolve texto sanitizado e veredicto.
@@ -608,6 +632,12 @@ def run_output_guardrails(
 
     redacted = append_hallucination_notice_if_needed(redacted, duck_block)
     verdict = GuardrailVerdict(allowed=True, stage="output")
+    if skip_llm_guard:
+        return redacted, GuardrailVerdict(
+            allowed=True,
+            stage="output",
+            engine="rule-based",
+        )
     return _apply_llm_guard_output(text, redacted, verdict)
 
 
