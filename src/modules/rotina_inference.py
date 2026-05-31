@@ -69,6 +69,13 @@ def _env_truthy(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+def _skip_output_llm_guard(ctx: ChatTurnContext) -> bool:
+    """Respostas determinísticas ou ancoradas em PDFs — rule-based na saída."""
+    if ctx.early_reply is not None:
+        return True
+    return bool(ctx.rag_chunks)
+
+
 def _finalize_assistant_reply(
     text: str,
     duck_block: str = "",
@@ -450,7 +457,7 @@ def complete_rotina_chat_sync(ctx: ChatTurnContext) -> tuple[str, GuardrailVerdi
         content, verdict = _finalize_assistant_reply(
             ctx.early_reply,
             ctx.duck_block or "",
-            skip_llm_guard=True,
+            skip_llm_guard=_skip_output_llm_guard(ctx),
         )
         return content, verdict
 
@@ -477,7 +484,9 @@ def complete_rotina_chat_sync(ctx: ChatTurnContext) -> tuple[str, GuardrailVerdi
                 collection=ctx.collection,
             )
             content, verdict = _finalize_assistant_reply(
-                (_cr_out.final_markdown or "").strip(), ctx.duck_block
+                (_cr_out.final_markdown or "").strip(),
+                ctx.duck_block,
+                skip_llm_guard=_skip_output_llm_guard(ctx),
             )
             return content, verdict
         except Exception:
@@ -494,6 +503,7 @@ def complete_rotina_chat_sync(ctx: ChatTurnContext) -> tuple[str, GuardrailVerdi
             )
         ).strip(),
         ctx.duck_block,
+        skip_llm_guard=_skip_output_llm_guard(ctx),
     )
 
 
@@ -578,7 +588,7 @@ def stream_rotina_chat_events(
     content, output_guardrail = _finalize_assistant_reply(
         "".join(raw_parts).strip(),
         ctx.duck_block,
-        skip_llm_guard=ctx.early_reply is not None,
+        skip_llm_guard=_skip_output_llm_guard(ctx),
     )
     yield {
         "event": "done",
