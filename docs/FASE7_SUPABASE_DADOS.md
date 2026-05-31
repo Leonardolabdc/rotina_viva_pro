@@ -47,7 +47,9 @@ ROTINA_DATA_BACKEND=supabase
 DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres
 ```
 
-Obter **DATABASE_URL**: Supabase → **Project Settings → Database → Connection string → URI** (modo **Transaction pooler** recomendado para Railway).
+Obter **DATABASE_URL**: Supabase → **Connect** → **Transaction pooler** (porta **6543**).
+
+Se a URI tiver `?pgbouncer=true`, **remova** esse sufixo no Railway (psycopg não aceita) — ou use deploy recente do worker que remove automaticamente.
 
 Manter:
 

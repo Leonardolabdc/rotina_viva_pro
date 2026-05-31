@@ -70,9 +70,17 @@ _PSQL_URI_DROP_QUERY_PARAMS = frozenset({"pgbouncer", "connection_limit", "pool_
 
 def psycopg_connect_url(raw_url: str) -> str:
     """URI Postgres compatível com psycopg (remove ?pgbouncer=true, etc.)."""
-    parsed = urlparse((raw_url or "").strip())
+    s = (raw_url or "").strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        s = s[1:-1].strip()
+    # Fallback regex (URLs mal formadas ou params extra do Supabase/Prisma).
+    s = re.sub(r"[?&]pgbouncer=[^&]*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\?&", "?", s)
+    s = re.sub(r"\?$", "", s)
+
+    parsed = urlparse(s)
     if not parsed.query:
-        return raw_url.strip()
+        return s
     kept = [
         (k, v)
         for k, v in parse_qsl(parsed.query, keep_blank_values=True)
@@ -93,7 +101,9 @@ def supabase_structured_probe() -> dict[str, object]:
     """Testa SELECT na view info_alunos (health / diagnóstico)."""
     if not supabase_structured_ready():
         return {"ok": False, "reason": "not_configured"}
+    raw = postgres_database_url()
     try:
+        reset_postgres_connection()
         conn = open_postgres_structured_connection()
         cur = conn.execute(
             "SELECT COUNT(*) AS total FROM info_alunos "
@@ -101,9 +111,18 @@ def supabase_structured_probe() -> dict[str, object]:
         )
         row = cur.fetchone()
         total = int(row[0]) if row else 0
-        return {"ok": True, "studentsWithName": total}
+        out: dict[str, object] = {"ok": True, "studentsWithName": total}
+        if "pgbouncer" in raw.lower():
+            out["note"] = "DATABASE_URL continha pgbouncer=; removido automaticamente para psycopg."
+        return out
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        hint = None
+        if "pgbouncer" in str(exc).lower():
+            hint = (
+                "Remova ?pgbouncer=true do DATABASE_URL no Railway "
+                "(ou aguarde redeploy com fix 31db287+)."
+            )
+        return {"ok": False, "error": str(exc), "hint": hint}
 
 
 def _get_pg_connection() -> Any:

@@ -337,6 +337,8 @@ def test_psycopg_connect_url_strips_pgbouncer() -> None:
     assert "pgbouncer" not in clean
     assert clean.endswith("/postgres")
     assert "secret@" in clean
+    quoted = '"postgresql://postgres.ref:secret@host:6543/postgres?pgbouncer=true"'
+    assert "pgbouncer" not in psycopg_connect_url(quoted)
     print("OK test_psycopg_connect_url_strips_pgbouncer")
 
 
