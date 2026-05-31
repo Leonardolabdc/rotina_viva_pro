@@ -761,9 +761,7 @@ def get_chroma_collection(
     data_dir = Path(data_dir_str)
 
     if rag_backend() == "pgvector":
-        from modules.rag_pgvector import ensure_pgvector_index
-
-        ensure_pgvector_index(data_dir)
+        # Índice vive no Supabase; não reindexar em runtime sem PDFs locais (Railway).
         return PgVectorRagHandle(index_profile=index_profile)
 
     persist_dir = Path(persist_dir_str)

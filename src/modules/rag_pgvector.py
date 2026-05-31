@@ -60,6 +60,40 @@ def pgvector_configured() -> bool:
     return bool(SUPABASE_URL and SERVICE_KEY)
 
 
+def pgvector_chunk_count() -> int:
+    """Chunks indexados no Supabase (0 se não configurado ou erro)."""
+    if not pgvector_configured():
+        return 0
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            return _count_chunks(client, INDEX_PROFILE)
+    except Exception:
+        return 0
+
+
+def pgvector_rag_health() -> dict[str, object]:
+    backend = os.getenv("ROTINA_RAG_BACKEND", "chroma").strip().lower()
+    if backend != "pgvector":
+        return {"backend": backend or "chroma"}
+    if not pgvector_configured():
+        return {"backend": "pgvector", "configured": False, "ready": False}
+    try:
+        n = pgvector_chunk_count()
+        return {
+            "backend": "pgvector",
+            "configured": True,
+            "chunkCount": n,
+            "ready": n > 0,
+        }
+    except Exception as exc:
+        return {
+            "backend": "pgvector",
+            "configured": True,
+            "ready": False,
+            "error": str(exc),
+        }
+
+
 def _service_headers() -> dict[str, str]:
     return {
         "apikey": SERVICE_KEY,
@@ -143,16 +177,26 @@ def _delete_profile_chunks(client: httpx.Client, profile: str) -> None:
     r.raise_for_status()
 
 
+def _pdfs_available_in(data_dir: Path) -> bool:
+    return any((data_dir / name).is_file() for name in PDF_NAMES)
+
+
 def pgvector_needs_reingest(data_dir: Path) -> bool:
     if not pgvector_configured():
         return False
+    data_dir = data_dir.resolve()
+    with httpx.Client(timeout=60.0) as client:
+        chunk_n = _count_chunks(client, INDEX_PROFILE)
+    # Produção (Railway): PDFs não vão no volume — índice só via build_rag_pgvector.py
+    if not _pdfs_available_in(data_dir):
+        return chunk_n == 0
     fp_now = _rag_pdf_manifest_fingerprint(data_dir)
     with httpx.Client(timeout=60.0) as client:
         stored_fp = _get_meta(client, _META_FINGERPRINT_KEY)
         stored_profile = _get_meta(client, _META_PROFILE_KEY)
         if stored_fp != fp_now or stored_profile != INDEX_PROFILE:
             return True
-        return _count_chunks(client, INDEX_PROFILE) == 0
+        return chunk_n == 0
 
 
 def ingest_pgvector_documents(data_dir: Path) -> int:
@@ -160,6 +204,11 @@ def ingest_pgvector_documents(data_dir: Path) -> int:
         raise RuntimeError("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY para RAG pgvector.")
 
     data_dir = data_dir.resolve()
+    if not _pdfs_available_in(data_dir):
+        raise RuntimeError(
+            "Nenhum PDF institucional em data_dir. "
+            "Indexe a partir do PC: python scripts/build_rag_pgvector.py"
+        )
     batch = effective_chroma_add_batch()
     total_used = 0
     rows_buffer: list[dict[str, Any]] = []
@@ -225,6 +274,12 @@ def _flush_chunks(client: httpx.Client, rows: list[dict[str, Any]]) -> None:
 
 
 def ensure_pgvector_index(data_dir: Path) -> int:
+    if not pgvector_configured():
+        return 0
+    data_dir = data_dir.resolve()
+    if not _pdfs_available_in(data_dir):
+        with httpx.Client(timeout=30.0) as client:
+            return _count_chunks(client, INDEX_PROFILE)
     if pgvector_needs_reingest(data_dir):
         return ingest_pgvector_documents(data_dir)
     with httpx.Client(timeout=30.0) as client:

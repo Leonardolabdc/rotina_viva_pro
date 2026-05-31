@@ -116,6 +116,13 @@ async def health() -> dict[str, object]:
             structured["probe"] = supabase_structured_probe()
     except Exception as exc:
         structured = {"error": str(exc)}
+    rag: dict[str, object] = {}
+    try:
+        from modules.rag_pgvector import pgvector_rag_health
+
+        rag = pgvector_rag_health()
+    except Exception as exc:
+        rag = {"error": str(exc)}
     return {
         "status": "ok",
         "version": API_VERSION,
@@ -124,6 +131,7 @@ async def health() -> dict[str, object]:
         "supabaseEnv": supabase_env_status(),
         "dataDir": _DATA_DIR_BOOT or None,
         "structuredData": structured,
+        "rag": rag,
         "llmGuard": llm_guard,
     }
 
