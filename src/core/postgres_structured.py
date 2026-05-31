@@ -27,6 +27,17 @@ class _PgResult:
         return self._rows[0] if self._rows else None
 
 
+def _pg_cursor_execute(cur: Any, sql: str, params: list[Any] | None = None) -> None:
+    """
+    psycopg: `execute(sql, [])` ainda interpreta `%` em ILIKE como placeholder.
+    Sem parâmetros reais, omitir o 2.º argumento (literais `%` em ILIKE ficam válidos).
+    """
+    if params:
+        cur.execute(sql, params)
+    else:
+        cur.execute(sql)
+
+
 class PostgresStructuredConnection:
     """API mínima compatível com `duckdb` para `conn.execute(sql)`."""
 
@@ -34,7 +45,7 @@ class PostgresStructuredConnection:
         pg_sql = _duckdb_sql_to_postgres(sql)
         with _pg_connect() as pg:
             with pg.cursor() as cur:
-                cur.execute(pg_sql, params or [])
+                _pg_cursor_execute(cur, pg_sql, params)
                 if cur.description is None:
                     return _PgResult([], [])
                 cols = [d.name for d in cur.description]
@@ -98,6 +109,8 @@ def _probe_error_hint(exc: Exception) -> str | None:
             "Pooler transaction (porta 6543): use Session pooler na porta 5432 no DATABASE_URL "
             "(Supabase → Connect → Session mode), ou aguarde redeploy recente do worker."
         )
+    if "placeholder" in msg and "%" in msg:
+        return "Consulta ILIKE com %% — redeploy recente do worker corrige execute() no psycopg."
     return None
 
 

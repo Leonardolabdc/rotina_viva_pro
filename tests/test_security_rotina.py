@@ -352,6 +352,28 @@ def test_structured_data_backend_default_csv() -> None:
     print("OK test_structured_data_backend_default_csv")
 
 
+def test_psycopg_execute_ilike_no_false_placeholder() -> None:
+    from core.postgres_structured import _pg_cursor_execute
+
+    class _Cur:
+        def __init__(self) -> None:
+            self.last_sql: str | None = None
+            self.last_params: Any = None
+
+        def execute(self, sql: str, params: Any = None) -> None:
+            self.last_sql = sql
+            self.last_params = params
+
+    cur = _Cur()
+    sql = "SELECT 1 FROM info_alunos WHERE nome ILIKE '%Ana%'"
+    _pg_cursor_execute(cur, sql, None)
+    assert cur.last_params is None
+    assert cur.last_sql == sql
+    _pg_cursor_execute(cur, sql, ["x"])
+    assert cur.last_params == ["x"]
+    print("OK test_psycopg_execute_ilike_no_false_placeholder")
+
+
 def test_psycopg_connect_url_strips_pgbouncer() -> None:
     from core.postgres_structured import psycopg_connect_url
 
@@ -379,6 +401,7 @@ def main() -> None:
     test_infer_allergy_sql_and_early_reply()
     test_data_bootstrap_seed()
     test_structured_data_backend_default_csv()
+    test_psycopg_execute_ilike_no_false_placeholder()
     test_psycopg_connect_url_strips_pgbouncer()
     test_output_guardrails_extended()
     test_demonstrate_blocked_attacks()
