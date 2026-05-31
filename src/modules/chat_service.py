@@ -349,6 +349,16 @@ _DIARIO_READ_KEYWORDS = re.compile(
 )
 
 
+def _question_wants_cadastro(um: str) -> bool:
+    """Pergunta sobre cadastro (turma, alergias, contacto, etc.)."""
+    low = (um or "").lower()
+    if re.search(r"(?i)\b(turma|cadastro|contato|telefone|id_aluno)\b", um):
+        return True
+    if re.search(r"(?i)\balunos?\b", um) or re.search(r"(?i)\balunas?\b", um):
+        return True
+    return "alerg" in low or "alérg" in low or "alegic" in low
+
+
 def _sql_week_anchor_filter_by_name_tokens(tokens: list[str]) -> str:
     """
     Últimos ~25 dias de diário **a partir da data mais recente desse aluno na base**,
@@ -467,6 +477,19 @@ def _extract_student_name_from_fragment(fragment: str) -> str | None:
     )
     if ma:
         name = _trim_aluno_name_tokens(_strip_dates_from_student_name_fragment(ma.group(1)))
+    if not name:
+        for pat in (
+            r"(?is)\b(?:alergias?)\s+(?:de|da|do)\s+(.+?)(?:\?|$|\n)",
+            r"(?is)\b(?:da|de|do)\s+([A-Za-zÀ-ÿ][\w\s'\-]{2,50}?)(?:\s*\?|\s*$|\n)",
+            r"(?is)\btem\s+([A-Za-zÀ-ÿ][\w\s'\-]{2,50}?)(?:\s*\?|\s*$|\n)",
+        ):
+            mx = re.search(pat, text)
+            if not mx:
+                continue
+            cand = _trim_aluno_name_tokens(_strip_dates_from_student_name_fragment(mx.group(1)))
+            if len(cand) >= 4:
+                name = cand
+                break
     if not name:
         parts_caps = re.findall(
             r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+)+)\b",
@@ -637,6 +660,48 @@ def try_build_cadastro_count_early_reply(user_message: str, duck_block: str) -> 
     return f"Há {count} alunos no cadastro."
 
 
+def _parse_cadastro_row_from_duck_line(line: str) -> dict[str, str] | None:
+    """Extrai colunas de uma linha tabular do duck_block (cadastro info_alunos)."""
+    if not re.match(r"^\|\s*\d+\s*\|", line):
+        return None
+    parts = [p.strip() for p in line.split("|") if p.strip()]
+    if len(parts) < 5 or not parts[0].isdigit():
+        return None
+    if parts[0] == "linha" or parts[1] == "id_aluno":
+        return None
+    return {
+        "id_aluno": parts[1],
+        "nome": parts[2],
+        "turma": parts[3],
+        "alergias": parts[4],
+        "contato_pais": parts[5] if len(parts) > 5 else "",
+    }
+
+
+def try_build_cadastro_allergy_early_reply(user_message: str, duck_block: str) -> str | None:
+    """Resposta directa para alergias cadastradas — evita o LLM ignorar a tabela."""
+    um = (user_message or "").strip()
+    if not re.search(r"(?i)alerg", um):
+        return None
+    name = _extract_student_name_for_infer_sql(um)
+    rows: list[dict[str, str]] = []
+    for line in (duck_block or "").splitlines():
+        row = _parse_cadastro_row_from_duck_line(line)
+        if row:
+            rows.append(row)
+    if not rows:
+        if "(nenhuma linha retornada)" in (duck_block or ""):
+            who = name or "esse aluno"
+            return f"Não encontrei cadastro de alergias para {who}."
+        return None
+    row = rows[0]
+    al = (row.get("alergias") or "").strip()
+    nome = (row.get("nome") or name or "O aluno").strip()
+    if not al or al.lower() in ("nenhuma", "nenhum", "-", "—", "na", "n/a", ""):
+        return f"{nome} não tem alergias registadas no cadastro."
+    return f"{nome} tem alergia registada: {al}."
+
+
 def resolve_cadastro_count_turn(conn: Any, user_message: str) -> tuple[str | None, str]:
     """
     Resposta directa para perguntas de contagem (total ou por turma).
@@ -665,6 +730,29 @@ def resolve_cadastro_count_turn(conn: Any, user_message: str) -> tuple[str | Non
     return None, block
 
 
+def resolve_cadastro_allergy_turn(conn: Any, user_message: str) -> tuple[str | None, str]:
+    """Resposta directa para alergias no cadastro (info_alunos)."""
+    um = (user_message or "").strip()
+    if not re.search(r"(?i)alerg", um) or is_cadastro_count_question(um):
+        return None, ""
+    sql = infer_structured_select_sql(um)
+    if not sql or "info_alunos" not in sql.lower():
+        return None, ""
+    from core.database import run_safe_select
+
+    block, ok = run_safe_select(conn, sql)
+    reply = try_build_cadastro_allergy_early_reply(um, block)
+    if reply:
+        return reply, block
+    if not ok:
+        return (
+            "Não consegui consultar alergias no cadastro agora.\n\n"
+            f"Detalhe: {(block or '')[:500]}",
+            block,
+        )
+    return None, block
+
+
 def infer_structured_select_sql(user_message: str) -> str | None:
     """
     SELECT de recurso quando o planeador devolve `sql` vazio: `info_alunos` e/ou
@@ -677,12 +765,7 @@ def infer_structured_select_sql(user_message: str) -> str | None:
     if count_sql:
         return count_sql
     wants_diario = bool(_DIARIO_READ_KEYWORDS.search(um))
-    wants_cadastro = bool(
-        re.search(
-            r"(?i)\b(turma|alerg|alérg|alegic|cadastro|aluno|aluna|contato|telefone|id_aluno)\b",
-            um,
-        )
-    )
+    wants_cadastro = _question_wants_cadastro(um)
     if not wants_diario and not wants_cadastro:
         return None
     id_m = re.search(

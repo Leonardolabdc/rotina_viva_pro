@@ -288,6 +288,32 @@ def test_infer_turma_count_sql() -> None:
     print("OK test_infer_turma_count_sql")
 
 
+def test_infer_allergy_sql_and_early_reply() -> None:
+    from pathlib import Path
+
+    from core.database import open_duckdb_connection, run_safe_select
+    from modules.chat_service import (
+        infer_structured_select_sql,
+        resolve_cadastro_allergy_turn,
+        try_build_cadastro_allergy_early_reply,
+    )
+
+    data_dir = Path(__file__).resolve().parents[1] / "data"
+    for um in (
+        "quais são as alergias da Ana Almeida?",
+        "qual alergia tem ana almeida ?",
+    ):
+        sql = infer_structured_select_sql(um)
+        assert sql and "alergias" in sql and "ILIKE" in sql, um
+        conn = open_duckdb_connection(data_dir)
+        reply, block = resolve_cadastro_allergy_turn(conn, um)
+        assert reply and "Amendoim" in reply, um
+        block2, ok = run_safe_select(conn, sql)
+        assert ok
+        assert try_build_cadastro_allergy_early_reply(um, block2) == reply
+    print("OK test_infer_allergy_sql_and_early_reply")
+
+
 def test_data_bootstrap_seed() -> None:
     import tempfile
     from pathlib import Path
@@ -350,6 +376,7 @@ def main() -> None:
     test_input_guardrails_pipeline()
     test_guardrails_obfuscation_and_roleplay()
     test_infer_turma_count_sql()
+    test_infer_allergy_sql_and_early_reply()
     test_data_bootstrap_seed()
     test_structured_data_backend_default_csv()
     test_psycopg_connect_url_strips_pgbouncer()

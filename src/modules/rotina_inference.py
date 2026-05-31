@@ -44,7 +44,10 @@ from modules.chat_service import (
     build_mutation_direct_reply,
     enrich_duck_block_cadastro_count,
     is_cadastro_count_question,
+    infer_structured_select_sql,
+    resolve_cadastro_allergy_turn,
     resolve_cadastro_count_turn,
+    try_build_cadastro_allergy_early_reply,
     _infer_info_alunos_count_sql,
     is_rag_nutrition_meals_scope_question,
     normalize_plan,
@@ -170,6 +173,13 @@ def prepare_rotina_chat_turn(
         _count_sql = _infer_info_alunos_count_sql(um) if is_cadastro_count_question(um) else None
         if _count_sql:
             ctx.processing_status = _processing_status_sql_line(um, _count_sql)
+        return ctx
+
+    _allergy_reply, _allergy_block = resolve_cadastro_allergy_turn(ctx.conn, um)
+    if _allergy_reply:
+        ctx.early_reply = _allergy_reply
+        ctx.duck_block = _allergy_block
+        ctx.processing_status = _processing_status_sql_line(um, infer_structured_select_sql(um))
         return ctx
 
     collection = None
@@ -414,6 +424,10 @@ def prepare_rotina_chat_turn(
         _count_reply = try_build_cadastro_count_early_reply(um, duck_block)
         if _count_reply:
             ctx.early_reply = _count_reply
+        else:
+            _allergy_reply = try_build_cadastro_allergy_early_reply(um, duck_block)
+            if _allergy_reply:
+                ctx.early_reply = _allergy_reply
 
     ctx.duck_block = duck_block
     ctx.rag_block = rag_block
