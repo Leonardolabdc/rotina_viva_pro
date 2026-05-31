@@ -10,6 +10,8 @@ import os
 import re
 from typing import Any
 
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
 from core.database import format_sql_rows
 
 
@@ -62,6 +64,23 @@ def postgres_database_url() -> str:
     return ""
 
 
+# Parâmetros de query na URI Supabase/Prisma que psycopg não aceita (ex.: ?pgbouncer=true).
+_PSQL_URI_DROP_QUERY_PARAMS = frozenset({"pgbouncer", "connection_limit", "pool_timeout"})
+
+
+def psycopg_connect_url(raw_url: str) -> str:
+    """URI Postgres compatível com psycopg (remove ?pgbouncer=true, etc.)."""
+    parsed = urlparse((raw_url or "").strip())
+    if not parsed.query:
+        return raw_url.strip()
+    kept = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k.lower() not in _PSQL_URI_DROP_QUERY_PARAMS
+    ]
+    return urlunparse(parsed._replace(query=urlencode(kept) if kept else ""))
+
+
 def postgres_configured() -> bool:
     return bool(postgres_database_url())
 
@@ -97,9 +116,10 @@ def _get_pg_connection() -> Any:
         )
     import psycopg
 
+    connect_url = psycopg_connect_url(url)
     if _pg_conn is None or getattr(_pg_conn, "closed", False):
         # Pooler Supabase (6543): prepared statements desactivados (ver docs Supabase).
-        _pg_conn = psycopg.connect(url, autocommit=True, prepare_threshold=0)
+        _pg_conn = psycopg.connect(connect_url, autocommit=True, prepare_threshold=0)
     return _pg_conn
 
 

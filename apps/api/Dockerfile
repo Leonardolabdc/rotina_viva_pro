@@ -5,7 +5,7 @@
 FROM python:3.12-slim-bookworm
 
 # Invalida cache Docker quando src/ ou rotina_api/ mudam (Railway reutilizava layers antigas).
-ARG CACHEBUST=count-fix-20260531
+ARG CACHEBUST=pgbouncer-uri-fix
 
 # Railway Hobby: deixar 0 (sem PyTorch). Local/prod com RAM: --build-arg INSTALL_LLM_GUARD=1
 ARG INSTALL_LLM_GUARD=0

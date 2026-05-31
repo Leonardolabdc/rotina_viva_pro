@@ -326,6 +326,20 @@ def test_structured_data_backend_default_csv() -> None:
     print("OK test_structured_data_backend_default_csv")
 
 
+def test_psycopg_connect_url_strips_pgbouncer() -> None:
+    from core.postgres_structured import psycopg_connect_url
+
+    raw = (
+        "postgresql://postgres.ref:secret@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
+        "?pgbouncer=true"
+    )
+    clean = psycopg_connect_url(raw)
+    assert "pgbouncer" not in clean
+    assert clean.endswith("/postgres")
+    assert "secret@" in clean
+    print("OK test_psycopg_connect_url_strips_pgbouncer")
+
+
 def main() -> None:
     test_password_hash_and_verify()
     test_mask_phone_and_duck_block()
@@ -336,6 +350,7 @@ def main() -> None:
     test_infer_turma_count_sql()
     test_data_bootstrap_seed()
     test_structured_data_backend_default_csv()
+    test_psycopg_connect_url_strips_pgbouncer()
     test_output_guardrails_extended()
     test_demonstrate_blocked_attacks()
     test_mask_pii_for_domain()
