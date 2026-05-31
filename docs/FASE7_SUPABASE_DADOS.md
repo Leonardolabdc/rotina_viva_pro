@@ -44,12 +44,14 @@ Confirme no Table Editor: **120** linhas em `students`.
 
 ```env
 ROTINA_DATA_BACKEND=supabase
-DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres
+# Railway (API sempre ligada): preferir Session pooler — porta 5432
+DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-1-[region].pooler.supabase.com:5432/postgres
+# Serverless / transaction pooler (6543) também funciona com worker recente; se der erro de "prepared statement", use 5432.
 ```
 
-Obter **DATABASE_URL**: Supabase → **Connect** → **Transaction pooler** (porta **6543**).
+Obter **DATABASE_URL**: Supabase → **Connect** → **Session pooler** (porta **5432**) para Railway/API.
 
-Se a URI tiver `?pgbouncer=true`, **remova** esse sufixo no Railway (psycopg não aceita) — ou use deploy recente do worker que remove automaticamente.
+Evite transaction pooler (**6543**) no worker FastAPI, salvo deploy recente — pode dar `prepared statement already exists`.
 
 Manter:
 

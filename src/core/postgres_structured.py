@@ -30,23 +30,16 @@ class _PgResult:
 class PostgresStructuredConnection:
     """API mínima compatível com `duckdb` para `conn.execute(sql)`."""
 
-    def __init__(self) -> None:
-        self._conn = _get_pg_connection()
-
     def execute(self, sql: str, params: list[Any] | None = None) -> _PgResult:
-        import psycopg
-
         pg_sql = _duckdb_sql_to_postgres(sql)
-        with self._conn.cursor() as cur:
-            cur.execute(pg_sql, params or [])
-            if cur.description is None:
-                return _PgResult([], [])
-            cols = [d.name for d in cur.description]
-            rows = cur.fetchall()
+        with _pg_connect() as pg:
+            with pg.cursor() as cur:
+                cur.execute(pg_sql, params or [])
+                if cur.description is None:
+                    return _PgResult([], [])
+                cols = [d.name for d in cur.description]
+                rows = cur.fetchall()
         return _PgResult(list(rows), cols)
-
-
-_pg_conn: Any | None = None
 
 
 def structured_data_backend() -> str:
@@ -73,7 +66,6 @@ def psycopg_connect_url(raw_url: str) -> str:
     s = (raw_url or "").strip()
     if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
         s = s[1:-1].strip()
-    # Fallback regex (URLs mal formadas ou params extra do Supabase/Prisma).
     s = re.sub(r"[?&]pgbouncer=[^&]*", "", s, flags=re.IGNORECASE)
     s = re.sub(r"\?&", "?", s)
     s = re.sub(r"\?$", "", s)
@@ -97,59 +89,57 @@ def supabase_structured_ready() -> bool:
     return structured_data_backend() == "supabase" and postgres_configured()
 
 
+def _probe_error_hint(exc: Exception) -> str | None:
+    msg = str(exc).lower()
+    if "pgbouncer" in msg and "query parameter" in msg:
+        return "Remova ?pgbouncer=true do DATABASE_URL no Railway."
+    if "prepared statement" in msg and "already exists" in msg:
+        return (
+            "Pooler transaction (porta 6543): use Session pooler na porta 5432 no DATABASE_URL "
+            "(Supabase → Connect → Session mode), ou aguarde redeploy recente do worker."
+        )
+    return None
+
+
 def supabase_structured_probe() -> dict[str, object]:
     """Testa SELECT na view info_alunos (health / diagnóstico)."""
     if not supabase_structured_ready():
         return {"ok": False, "reason": "not_configured"}
     raw = postgres_database_url()
     try:
-        reset_postgres_connection()
-        conn = open_postgres_structured_connection()
-        cur = conn.execute(
-            "SELECT COUNT(*) AS total FROM info_alunos "
-            "WHERE TRIM(COALESCE(nome, '')) <> ''"
-        )
-        row = cur.fetchone()
+        with _pg_connect() as pg:
+            with pg.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS total FROM info_alunos "
+                    "WHERE TRIM(COALESCE(nome, '')) <> ''"
+                )
+                row = cur.fetchone()
         total = int(row[0]) if row else 0
         out: dict[str, object] = {"ok": True, "studentsWithName": total}
         if "pgbouncer" in raw.lower():
             out["note"] = "DATABASE_URL continha pgbouncer=; removido automaticamente para psycopg."
         return out
     except Exception as exc:
-        hint = None
-        if "pgbouncer" in str(exc).lower():
-            hint = (
-                "Remova ?pgbouncer=true do DATABASE_URL no Railway "
-                "(ou aguarde redeploy com fix 31db287+)."
-            )
-        return {"ok": False, "error": str(exc), "hint": hint}
+        return {"ok": False, "error": str(exc), "hint": _probe_error_hint(exc)}
 
 
-def _get_pg_connection() -> Any:
-    global _pg_conn
+def _pg_connect() -> Any:
+    """Nova ligação por consulta — compatível com Supavisor transaction mode (6543)."""
+    import psycopg
+
     url = postgres_database_url()
     if not url:
         raise RuntimeError(
             "ROTINA_DATA_BACKEND=supabase requer DATABASE_URL (ou SUPABASE_DB_URL) "
             "— Supabase → Settings → Database → Connection string."
         )
-    import psycopg
-
     connect_url = psycopg_connect_url(url)
-    if _pg_conn is None or getattr(_pg_conn, "closed", False):
-        # Pooler Supabase (6543): prepared statements desactivados (ver docs Supabase).
-        _pg_conn = psycopg.connect(connect_url, autocommit=True, prepare_threshold=0)
-    return _pg_conn
+    return psycopg.connect(connect_url, autocommit=True, prepare_threshold=None)
 
 
 def reset_postgres_connection() -> None:
-    global _pg_conn
-    if _pg_conn is not None:
-        try:
-            _pg_conn.close()
-        except Exception:
-            pass
-    _pg_conn = None
+    """Compatibilidade — ligações Postgres são efémeras (sem pool global)."""
+    return None
 
 
 def open_postgres_structured_connection() -> PostgresStructuredConnection:
@@ -168,13 +158,16 @@ def run_safe_select_postgres(sql: str) -> tuple[str, bool]:
         cols = [d[0] for d in cur.description] if cur.description else []
         return format_sql_rows(rows, cols), True
     except Exception as e:
-        return f"Erro ao executar SQL: {e}", False
+        hint = _probe_error_hint(e)
+        msg = f"Erro ao executar SQL: {e}"
+        if hint:
+            msg += f" ({hint})"
+        return msg, False
 
 
 def _duckdb_sql_to_postgres(sql: str) -> str:
     """Ajustes pontuais DuckDB → Postgres (mesmas tabelas/colunas via views)."""
     s = sql.strip().rstrip(";")
-    # DuckDB aceita comparar date column com string; views já expõem text onde necessário.
     return re.sub(
         r"\bCURRENT_DATE\b",
         "CURRENT_DATE",
